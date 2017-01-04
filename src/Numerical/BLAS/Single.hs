@@ -1,11 +1,20 @@
 -- | This module provides BLAS library functions for vectors of
 -- single precision floating point numbers.
 module Numerical.BLAS.Single(
-    sdot
+   sdot_zip,
+   sdot,
     ) where
 
 import Data.Vector.Unboxed(Vector)
 import qualified Data.Vector.Unboxed as V
+
+{- | O(n) compute the dot product of two vectors using zip and fold
+-}
+sdot_zip :: Vector Float -- ^ The vector u
+    -> Vector Float      -- ^ The vector v
+    -> Float             -- ^ The dot product u . v
+sdot_zip u v = V.foldr (+) 0 $ V.zipWith (*) u v
+
 
 {- | O(n) sdot computes the sum of the products of elements drawn from two
    vectors according to the following specification:
