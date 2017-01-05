@@ -10,7 +10,11 @@ description:         BLAS is a is a FORTRAN 77 library developed by the NSF
 
     There have been several attempts to interface Haskell with BLAS (hblas,
     blas, blas-hs, HBlas, hmatrix to name a few), but they all suffer from the
-    same limitation - they attempt to call an existing C library from Haskell.   The user of those implementations are faced with a Cornelian dilemma: perform computations in Haskell using possibly unsafe operations on pointers to c data structures,  or to incur a potentially enormous cost in marshaling Haskell data structures each time a BLAS call is invoked.
+    same limitation - they attempt to call an existing C library from Haskell.
+    The user of those implementations are faced with a Cornelian dilemma:
+    perform computations in Haskell using possibly unsafe operations on pointers
+    to C data structures,  or to incur a potentially enormous cost in marshaling
+    Haskell data structures each time a BLAS call is invoked.
 
     This library takes a different approach.   Rather than attempt to access an
     existing BLAS library in C, we provide native Haskell implementations of
@@ -21,7 +25,7 @@ description:         BLAS is a is a FORTRAN 77 library developed by the NSF
 license:             BSD3
 license-file:        LICENSE
 author:              Darrell Lewis-Sandy
-maintainer:          dlewissandy@gmail.com
+maintainer:          darrell@lewissandy.com
 -- copyright:
 category:            Math
 build-type:          Simple
