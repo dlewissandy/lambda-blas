@@ -1,6 +1,7 @@
 -- | This module provides BLAS library functions for vectors of
 -- single precision floating point numbers.
 module Numerical.BLAS.Single(
+    sdot
     ) where
 
 import Data.Vector.Unboxed(Vector)
