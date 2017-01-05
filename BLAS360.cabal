@@ -48,3 +48,4 @@ test-suite blas-test
   main-is: Main.hs
   build-depends:    base, primitive, vector, tasty, BLAS360
   type: exitcode-stdio-1.0
+
