@@ -54,3 +54,14 @@ test-suite blas-test
   frameworks: Accelerate
   extra-libraries: cblas
   ghc-options: -Wall -Werror -msse2 -O1
+
+benchmark blas-benchmark
+    hs-source-dirs: test
+    main-is: Bench.hs
+    other-modules:    Gen, OSX
+    build-depends:    base, primitive, vector, QuickCheck,
+        random, criterion, BLAS360
+    type: exitcode-stdio-1.0
+    frameworks: Accelerate
+    extra-libraries: cblas
+    ghc-options: -msse2 -O1
