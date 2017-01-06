@@ -40,6 +40,7 @@ matrix:
       os: osx
 
 before_install:
+ - rvm get head # workarround for travis issue https://github.com/travis-ci/travis-ci/issues/6307
  - unset CC
  - case "$BUILD" in
      style)
