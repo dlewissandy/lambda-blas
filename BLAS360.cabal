@@ -46,6 +46,11 @@ library
 test-suite blas-test
   hs-source-dirs: test
   main-is: Main.hs
-  build-depends:    base, primitive, vector, tasty, BLAS360
+  other-modules:    Gen, OSX
+  build-depends:    base, primitive, vector, tasty, QuickCheck, tasty-hunit,
+      random, tasty-quickcheck, BLAS360
   type: exitcode-stdio-1.0
 
+  frameworks: Accelerate
+  extra-libraries: cblas
+  ghc-options: -Wall -Werror -msse2 -O1
