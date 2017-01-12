@@ -38,7 +38,7 @@ $ stack test --test-arguments "--help"
 $ stack test --benchmark-arguments "--help"
 ```
 
-For advanced features of the benchmark tool, please consult the (criterion)[http://www.serpentine.com/criterion/] web site for more information.
+For advanced features of the benchmark tool, please consult the [criterion](http://www.serpentine.com/criterion/) web site for more information.
 
 # Example Usage
 Consider the following simple example to compute the dot product of
