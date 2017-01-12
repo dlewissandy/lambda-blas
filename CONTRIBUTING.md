@@ -18,7 +18,8 @@ After following the steps above, you may create a new GitHub issue for your enha
 
 * Create a clear title of the enhancement using user story format.   User stories are of the form
 
-    ``` As a <type of user>, I want <goal> so that <benefit>
+    ``` 
+    As a <type of user>, I want <goal> so that <benefit>
     ```
 
 * Create a comment on the issue that gives a clear, detailed description of the work you intend to undertake.   Citing references is highly recommended to help other contributors understand your proposal.    Describe the tests that must be implemented to evidence the correctness of the implementation.
