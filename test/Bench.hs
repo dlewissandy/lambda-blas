@@ -3,9 +3,8 @@
 -- the BLAS subroutines
 module Main( main ) where
 
-import qualified Data.Vector.Unboxed as V
+import qualified Data.Vector.Storable as V
 import Foreign.Marshal.Array
-import System.Random
 import Test.QuickCheck.Gen
 import Foreign.Ptr
 import Criterion.Main

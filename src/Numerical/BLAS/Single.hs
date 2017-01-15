@@ -5,8 +5,8 @@ module Numerical.BLAS.Single(
    sdot,
     ) where
 
-import Data.Vector.Unboxed(Vector)
-import qualified Data.Vector.Unboxed as V
+import Data.Vector.Storable(Vector)
+import qualified Data.Vector.Storable as V
 
 {- | O(n) compute the dot product of two vectors using zip and fold
 -}
@@ -41,39 +41,43 @@ sdot :: Int -- ^ The number of summands
     -> Float        -- ^ The sum of the product of the elements.
 sdot n sx incx sy incy
    | n < 1                  = error "Encountered zero or negative length vector"
-   | incx == 1 && incy == 1 = sdot_unrolled
-   | otherwise              = sdot_loop
+   | incx /=1 || incy /= 1 = V.foldl1' (+) . V.generate n $ productElems (ithIndex incx) (ithIndex incy)
+   | n < 5     = V.foldl1' (+) . V.zipWith (*) sx $ sy
+   | m == 0    = hyloL splitAndMul5 sum5 0 (sx,sy)
+   | otherwise =
+        let (lx,rx) = V.splitAt m sx
+            (ly,ry) = V.splitAt m sy
+            subtotal = V.foldl1' (+) . V.zipWith (*) lx $ ly
+        in  hyloL splitAndMul5 sum5 subtotal (rx, ry)
+    where
+        m :: Int
+        m = n `mod` 5
+        productElems :: (Int->Int) -> (Int->Int) -> Int -> Float
+        productElems indexX indexY i = sx `V.unsafeIndex` (indexX i)
+                        * sy `V.unsafeIndex` (indexY i)
+        splitAndMul5 :: (V.Vector Float, V.Vector Float) -> Maybe (V.Vector Float, (V.Vector Float, V.Vector Float))
+        splitAndMul5 (xs,ys)
+             | V.null xs || V.null ys = Nothing
+             | otherwise              = Just (
+                 V.zipWith (*) (V.take 5 xs) (V.take 5 ys)
+                 , (V.drop 5 xs, V.drop 5 ys))
+        ithIndex :: Int -> Int -> Int
+        {-# INLINE [0] ithIndex #-}
+        ithIndex inc
+            | inc>0     = \ i -> inc*i
+            | otherwise = \ i -> (1+i-n)*inc
+        sum5 :: Float -> V.Vector Float -> Float
+        sum5 subtotal' summands = subtotal' + summands `V.unsafeIndex` 0
+            + summands `V.unsafeIndex` 1 + summands `V.unsafeIndex` 2
+            + summands `V.unsafeIndex` 3 + summands `V.unsafeIndex` 4
+
+hyloL :: ( a -> Maybe (b,a)) -> (c -> b -> c) -> c -> a -> c
+{-# INLINE [1] hyloL #-}
+hyloL f g = hylo_loop
    where
-   sdot_unrolled :: Float
-   {-# INLINE sdot_unrolled #-}
-   sdot_unrolled = case ( n `mod` 5) of
-       0 -> sdot_unrolled_mod5 0 0
-       m -> sdot_unrolled_not_mod5 m
-   sdot_unrolled_not_mod5 :: Int -> Float
-   {-# INLINE sdot_unrolled_not_mod5 #-}
-   sdot_unrolled_not_mod5 m
-      | n < 5     = go 0 0
-      | otherwise = sdot_unrolled_mod5 imax $! go 0 0
-      where
-      imax = min n m
-      go :: Int -> Float -> Float
-      {-# INLINE go #-}
-      go i accum
-         | i>=imax   = accum
-         | otherwise = go (succ i) $ accum + (sx V.! i)*(sy V.! i)
-   sdot_unrolled_mod5 :: Int -> Float -> Float
-   {-# INLINE sdot_unrolled_mod5 #-}
-   sdot_unrolled_mod5 i accum
-       | i >= n    = accum
-       | otherwise = sdot_unrolled_mod5 (i+5) $ accum + (sx V.! i)*(sy V.! i)
-           + (sx V.! (i+1))*(sy V.! (i+1)) + (sx V.! (i+2))*(sy V.! (i+2))
-           + (sx V.! (i+3))*(sy V.! (i+3))+ (sx V.! (i+4))*(sy V.! (i+4))
-   sdot_loop :: Float
-   {-# INLINE sdot_loop #-}
-   sdot_loop = go ix iy 0 0
-      where
-      ix = if incx<0 then (-n+1)*incx else 0
-      iy = if incy<0 then (-n+1)*incy else 0
-      go j k i accum
-         | i >= n    = accum
-         | otherwise = go (j+incx) (k+incy) (succ i) $ accum+(sx V.! j)*(sy V.! k)
+   {-# INLINE [0] hylo_loop #-}
+   hylo_loop c a = do
+       let r = f a
+       case r of
+           Nothing -> c
+           Just (b,a') -> hylo_loop (g c b) a'
