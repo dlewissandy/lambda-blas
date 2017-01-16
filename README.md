@@ -4,7 +4,12 @@
 The λ-BLAS (lambda-BLAS) project is an attempt to implement the Basic
 Linear Algebra Subroutines (BLAS) library in Haskell.   This work differs
 from previous attempts by providing native Haskell implementations of the
-linear algebra subroutines rather than utilizing the foreign function interface to call a C library.  As a result the exposed linear algebra functions exposed strongly and statically typed, deterministic, thread safe and more likely to benefit from compiler optimization (e.g. stream fusion )
+linear algebra subroutines rather than utilizing the foreign function interface to call a C library.  As a result the exposed linear algebra functions exposed strongly and statically typed, deterministic, thread safe and more likely to benefit from compiler optimization (e.g. stream fusion ) .
+
+The latest haddock documentation and benchmarks can be found at the links below:
+[Documentation]()
+[Benchmarks](https://dlewissandy.github.io/lambda-blas/benchmarks.html)
+[Documentation](https://dlewissandy.github.io/lambda-blas/)
 
 ## Getting Started
 ### Prerequisites
