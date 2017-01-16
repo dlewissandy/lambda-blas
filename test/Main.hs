@@ -2,7 +2,7 @@
 -- the native haskell implementations of BLAS subroutines.
 module Main( main ) where
 
-import qualified Data.Vector.Unboxed as V
+import qualified Data.Vector.Storable as V
 import Foreign.Marshal.Array
 import System.Random
 import Test.Tasty

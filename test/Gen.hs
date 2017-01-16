@@ -32,18 +32,18 @@ module Gen
 
 import System.Random
 import Test.QuickCheck.Gen
-import Data.Vector.Unboxed
+import Data.Vector.Storable
 
 -- | Given a generator for the elements, construct a random vector of length
 -- between 1 and 1000.
-genVector :: (Unbox a) => Gen a -> Gen (Vector a)
+genVector :: (Storable a) => Gen a -> Gen (Vector a)
 genVector gen = do
     n<- choose (1,1000)
     genNVector gen n
 
 -- | Given a generator for the elements, construct a
 -- random vector of the given length
-genNVector :: (Unbox a) => Gen a -> Int -> Gen (Vector a)
+genNVector :: (Storable a) => Gen a -> Int -> Gen (Vector a)
 genNVector gen n = vectorOf n gen >>= return.fromList
 
 -- | Given a random generator for a floating point type, generate a random
