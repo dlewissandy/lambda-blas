@@ -7,9 +7,8 @@ from previous attempts by providing native Haskell implementations of the
 linear algebra subroutines rather than utilizing the foreign function interface to call a C library.  As a result the exposed linear algebra functions exposed strongly and statically typed, deterministic, thread safe and more likely to benefit from compiler optimization (e.g. stream fusion ) .
 
 The latest haddock documentation and benchmarks can be found at the links below:
-[Documentation]()
+[Documentation](https://dlewissandy.github.io/lambda-blas/doc/BLAS360-0.1.0.0/index.html)
 [Benchmarks](https://dlewissandy.github.io/lambda-blas/benchmarks.html)
-[Documentation](https://dlewissandy.github.io/lambda-blas/)
 
 ## Getting Started
 ### Prerequisites
