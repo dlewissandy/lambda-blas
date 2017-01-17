@@ -13,7 +13,7 @@ import qualified Data.Vector.Storable as V
 sdot_zip :: Vector Float -- ^ The vector u
     -> Vector Float      -- ^ The vector v
     -> Float             -- ^ The dot product u . v
-sdot_zip u v = V.foldr (+) 0 $ V.zipWith (*) u v
+sdot_zip u v = V.foldl (+) 0 $ V.zipWith (*) u v
 
 
 {- | O(n) sdot computes the sum of the products of elements drawn from two

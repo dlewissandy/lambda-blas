@@ -23,26 +23,44 @@ tests :: TestTree
 tests = testGroup "BLAS"
     [ genTests "Double" (1::Double) -- test the random number generators for IEEE Doubles
     , genTests "Float"  (1::Float)  -- test the random number generators for IEEE Singles
-    , dotTests -- Confirm that the native sdot function is byte equivalent to the CBLAS implementation
+    , nativeTest     -- Confirm that the native sdot function is byte equivalent to the CBLAS implementation
+    , naiveTest      -- Confirm that the naive dot product function is equivalent to the CBLAS implementation
     ]
+
+-- | Evidence that the naive sdot function is byte equivalent to the CBLAS
+-- implementation.  Vectors of length 1-10 are tested having elements that are
+-- in the range of approximately (epsilon/2,2/epsilon).
+naiveTest :: TestTree
+naiveTest = dotTest "sdot_zip" (\ _ u _ v _ -> sdot_zip u v) (return 1)
+
+-- | Evidence that the native sdot function is byte equivalent to the CBLAS
+-- implementation.  Vectors of length 1-10 are tested having elements that are
+-- in the range of approximately (epsilon/2,2/epsilon).
+nativeTest :: TestTree
+nativeTest = dotTest "sdot" sdot (elements [-1,1])
 
 -- | Evidence that the native sdot function is byte equivalent to the CBLAS
 -- implementation.  Vectors of length 1-10 are tested having elements that are
 -- in the range of approximately (epsilon/2,2/epsilon)
-dotTests :: TestTree
-dotTests = testProperty "sdot" $
+dotTest :: String
+         -> (Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float)
+         -> Gen Int
+         -> TestTree
+dotTest testname func genInc = testProperty testname $
     -- Choose the length of the vector
     forAll (choose (1,10)) $ \ n ->
     -- Randomly generate two vectors of the chosen length
     forAll (genNVector (genFloat genEveryday) n) $ \ u ->
     forAll (genNVector (genFloat genEveryday) n) $ \ v ->
+    forAll (genInc) $ \ incx ->
+    forAll (genInc) $ \ incy ->
        -- monadically marshal the vectors into arrays for use with CBLAS
        ioProperty $
        withArray (V.toList u) $ \ us ->
        withArray (V.toList v) $ \ vs -> do
            -- compute the expected and observed values
-           let expected = OSX.sdot n us 1 vs 1
-               observed = sdot n u 1 v 1
+           let expected = OSX.sdot n us incx vs incy
+               observed = func n u incx v incy
            runTest expected observed
       where
       runTest expected observed =
