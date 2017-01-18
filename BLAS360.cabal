@@ -52,8 +52,7 @@ test-suite blas-test
       random, tasty-quickcheck, BLAS360
   type: exitcode-stdio-1.0
 
-  frameworks: Accelerate
-  extra-libraries: cblas
+  extra-libraries: blas
   ghc-options: -Wall -Werror -msse2 -O2
 
 benchmark blas-benchmark
@@ -63,6 +62,5 @@ benchmark blas-benchmark
     build-depends:    base, primitive, vector, QuickCheck,
         random, criterion, BLAS360
     type: exitcode-stdio-1.0
-    frameworks: Accelerate
-    extra-libraries: cblas
+    extra-libraries: blas
     ghc-options: -Wall -Werror -O2

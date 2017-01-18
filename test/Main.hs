@@ -59,8 +59,8 @@ dotTest testname func genInc = testProperty testname $
        withArray (V.toList u) $ \ us ->
        withArray (V.toList v) $ \ vs -> do
            -- compute the expected and observed values
-           let expected = OSX.sdot n us incx vs incy
-               observed = func n u incx v incy
+           expected <- OSX.sdot n us incx vs incy
+           let observed = func n u incx v incy
            runTest expected observed
       where
       runTest expected observed =

@@ -28,7 +28,7 @@ benchmarks :: V.Vector Float -> V.Vector Float
 benchmarks u v us vs = [ bgroup "sdot"
    [ bench "naive" $ nf naive (u,v)
    , bench "native" $ nf native (n,u,v)
-   , bench "cblas" $ nf cblas (n,us,vs)
+   , bench "cblas" $ nfIO $ cblas (n,us,vs)
    ]
    ]
    where
