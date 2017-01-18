@@ -12,7 +12,7 @@ fetch_stack_osx() {
 }
 
 fetch_stack_linux() {
-  curl -sL https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack';
+  curl -sL https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
 }
 
 fetch_blas_osx() {
@@ -45,7 +45,8 @@ cd BLAS-3.7.0
 gfortran -c -O3 *.f               # Compile, but don't link
 if [ `uname` = "Darwin" ]; then
     /Library/Developer/CommandLineTools/usr/bin/ar rcs libblas.a *.o
+    sudo cp libblas.a /usr/local/lib/
 else
-    ar rcs libblas.a *.o on linux     # Create a static library from the object files
+    ar rcs libblas.a *.o      # Create a static library from the object files
+    sudo cp libblas.a /usr/local/lib/  # Install the library for use.
 fi
-sudo cp libblas.a /usr/local/lib  # Install the library for use.
