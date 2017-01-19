@@ -1,5 +1,5 @@
 language: generic
-sudo: false
+sudo: required
 env:
     global:
         - secure: "qSKsy0OGJ/GvkD4G9vHO75NZqJbx01sudVZM/A6QORmvKIa05/rdfONkUZNpPIbBWKiDs8LJ3JcWswkbOY+ffo9csdxcrEZAJnJiqiGiwZJXRwITXQneX+IY1w0mMhORg2b8qKVSyRkQ8qXezx78KivLmLl2ViMdpVq34/+jL3RvpJzD8LIyql0/dN2N2pzG4ICAG09XNXlg9LSbLWd9VNKwJjOx7UiTvsTQxiimOOJ/SNWyPM2OT+CuALp8CS85kTUTIyfFPoFdwWHsck1UyJP5Cv7uBYxKtQnF8IgWAZkfrFQptcGnmfFelDvOkWvwJeTQCNH2flwVebnFk/tIt2dR8ae9GP3jL5qWoXmxDofsR9eQS3eKvXdE1Gzx5Gn78gXLyAyWSIduvDEs8VvAyzd/uAcFlqW3zhpx9K2qSq3+KaXaXTk7bmGOc+HNgjvr9LFBl4PtsdAKZOI2EleXm+287pWVVMXE74g8jN/q8UU2MwEqvLymZdTOk8OSeS/oEFcGzUe01YYBr8ibC9b/btEPeLmj42xWiYOcWaDnlZX0EBUkpxqTcMAHIgDZX59AqpUrbUgQyTTQwRINA6H5qCeYIdFdmuFz+MdJ1kdBWWYrd11Pp49T7QMR38U2xaQSNVUFhCHf4SJWZPlUrC7981F/Rf2g+mYeb3trH0EQGM0="
@@ -12,32 +12,11 @@ cache:
 
 matrix:
   fast_finish: true
-  exclude:
-    - env: BUILD=cabal CABALVER=1.24 GHCVER=7.8.4 STACK_YAML=stack-7.8.yaml
-      compiler: ": #GHC 7.8.4"
-      addons: {apt: {packages: [cabal-install-1.24,ghc-7.8.4], sources: [hvr-ghc]}}
-
-    - env: BUILD=cabal CABALVER=1.22 GHCVER=7.10.3
-      compiler: ": #GHC 7.10.3"
-      addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.3], sources: [hvr-ghc]}}
-
-    - env: BUILD=cabal CABALVER=1.24 GHCVER=8.0.1
-      compiler: ": #GHC 8.0.1"
-      addons: {apt: {packages: [cabal-install-1.24,ghc-8.0.1], sources: [hvr-ghc]}}
-
-    - env: BUILD=stack GHCVER=7.8.4 STACK_YAML=stack-7.8.yaml
-      compiler: ": #stack 7.8.4"
-      addons: {apt: {packages: [ghc-7.8.4], sources: [hvr-ghc]}}
-
-    - env: BUILD=stack GHCVER=8.0.1 STACK_YAML=stack-8.0.yaml
-      compiler: ": #stack 8.0.1"
-      addons: {apt: {packages: [ghc-8.0.1], sources: [hvr-ghc]}}
-
-    - env: BUILD=style GHCVER=8.0.1 STACK_YAML=stack-8.0.yaml
-      compiler: ": #stack 8.0.1"
-      addons: {apt: {packages: [ghc-8.0.1], sources: [hvr-ghc]}}
-
   include:
+    - env: BUILD=stack GHCVER=7.10.3 STACK_YAML=stack.yaml
+      compiler: ": #stack 7.10.3"
+      addons: {apt: {packages: [ghc-7.10.3,gfortran], sources: [hvr-ghc]}}
+
     - env: BUILD=stack STACK_YAML=stack.yaml
       compiler: ": #stack 7.10.3 osx"
       os: osx
@@ -45,34 +24,16 @@ matrix:
 before_install:
  - rvm get head # workarround for travis issue https://github.com/travis-ci/travis-ci/issues/6307
  - unset CC
- - case "$BUILD" in
-     style)
-       export PATH=$HOME/.local/bin:/opt/ghc/$GHCVER/bin:$PATH;;
-     stack)
-       export PATH=$HOME/.local/bin:/opt/ghc/$GHCVER/bin:$PATH;;
-   esac
+ - export PATH=$HOME/.local/bin:/opt/ghc/$GHCVER/bin:$PATH
  - ./.travis-setup.sh
 
 install:
  - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
- - case "$BUILD" in
-     style)
-       stack --system-ghc --no-terminal install hlint;;
-     stack)
-       stack --no-terminal test --only-dependencies;;
-   esac
+ - stack --no-terminal test --only-dependencies
 
 script:
- - set -e; case "$BUILD" in
-     style)
-       hlint src/ --hint=HLint.hs;
-       hlint src/ --cpp-define=WINDOWS=1 --hint=HLint.hs;
-       hlint test/ --cpp-simple --hint=HLint.hs;
-       stack --system-ghc --no-terminal build --pedantic;;
-     stack)
-       stack --no-terminal test --haddock --no-haddock-deps --ghc-options="-Werror";
-       stack bench --benchmark-arguments "-o benchmarks.html";;
-   esac
+ - set -e
+ - stack --no-terminal test --haddock --no-haddock-deps --ghc-options="-Werror"
 
 after_success:
     - ./build-docs.sh
