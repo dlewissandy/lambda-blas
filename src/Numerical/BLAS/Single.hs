@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 -- | This module provides BLAS library functions for vectors of
 -- single precision floating point numbers.
 module Numerical.BLAS.Single(
@@ -43,41 +44,35 @@ sdot n sx incx sy incy
    | n < 1                  = error "Encountered zero or negative length vector"
    | incx /=1 || incy /= 1 = V.foldl1' (+) . V.generate n $ productElems (ithIndex incx) (ithIndex incy)
    | n < 5     = V.foldl1' (+) . V.zipWith (*) sx $ sy
-   | m == 0    = hyloL splitAndMul5 sum5 0 (sx,sy)
+   | m == 0    = hylo_loop 0 sx sy
    | otherwise =
         let (lx,rx) = V.splitAt m sx
             (ly,ry) = V.splitAt m sy
             subtotal = V.foldl1' (+) . V.zipWith (*) lx $ ly
-        in  hyloL splitAndMul5 sum5 subtotal (rx, ry)
+        in  hylo_loop subtotal rx ry
     where
         m :: Int
         m = n `mod` 5
         productElems :: (Int->Int) -> (Int->Int) -> Int -> Float
+        {-# INLINE [0] productElems #-}
         productElems indexX indexY i = sx `V.unsafeIndex` (indexX i)
                         * sy `V.unsafeIndex` (indexY i)
-        splitAndMul5 :: (V.Vector Float, V.Vector Float) -> Maybe (V.Vector Float, (V.Vector Float, V.Vector Float))
-        splitAndMul5 (xs,ys)
-             | V.null xs || V.null ys = Nothing
-             | otherwise              = Just (
-                 V.zipWith (*) (V.take 5 xs) (V.take 5 ys)
-                 , (V.drop 5 xs, V.drop 5 ys))
         ithIndex :: Int -> Int -> Int
         {-# INLINE [0] ithIndex #-}
-        ithIndex inc
+        ithIndex !inc
             | inc>0     = \ i -> inc*i
             | otherwise = \ i -> (1+i-n)*inc
-        sum5 :: Float -> V.Vector Float -> Float
-        sum5 subtotal' summands = subtotal' + summands `V.unsafeIndex` 0
-            + summands `V.unsafeIndex` 1 + summands `V.unsafeIndex` 2
-            + summands `V.unsafeIndex` 3 + summands `V.unsafeIndex` 4
-
-hyloL :: ( a -> Maybe (b,a)) -> (c -> b -> c) -> c -> a -> c
-{-# INLINE [1] hyloL #-}
-hyloL f g = hylo_loop
-   where
-   {-# INLINE [0] hylo_loop #-}
-   hylo_loop c a = do
-       let r = f a
-       case r of
-           Nothing -> c
-           Just (b,a') -> hylo_loop (g c b) a'
+        -- hyloL :: ( a -> Maybe (b,a)) -> (c -> b -> c) -> c -> a -> c
+        {-# INLINE [1] hylo_loop #-}
+        hylo_loop !c xs ys
+           | V.null xs = c
+           | V.null ys = c
+           | otherwise =
+               let xs' = V.drop 5 xs
+                   ys' = V.drop 5 ys
+                   c'  = c + (xs `V.unsafeIndex` 0)*(ys `V.unsafeIndex` 0)
+                       + (xs `V.unsafeIndex` 1)*(ys `V.unsafeIndex` 1)
+                       + (xs `V.unsafeIndex` 2)*(ys `V.unsafeIndex` 2)
+                       + (xs `V.unsafeIndex` 3)*(ys `V.unsafeIndex` 3)
+                       + (xs `V.unsafeIndex` 4)*(ys `V.unsafeIndex` 4)
+               in  hylo_loop c' xs' ys'
