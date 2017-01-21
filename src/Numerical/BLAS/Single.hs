@@ -43,13 +43,11 @@ sdot :: Int -- ^ The number of summands
 sdot n sx incx sy incy
    | n < 1                  = error "Encountered zero or negative length vector"
    | incx /=1 || incy /= 1 = V.foldl1' (+) . V.generate n $ productElems (ithIndex incx) (ithIndex incy)
-   | n < 5     = V.foldl1' (+) . V.zipWith (*) sx $ sy
-   | m == 0    = hylo_loop 0 sx sy
+   | n < 5     = V.foldl1' (+) . V.zipWith (*) (V.take m sx) $ (V.take m sy)
+   | m == 0    = hylo_loop 0 0
    | otherwise =
-        let (lx,rx) = V.splitAt m sx
-            (ly,ry) = V.splitAt m sy
-            subtotal = V.foldl1' (+) . V.zipWith (*) lx $ ly
-        in  hylo_loop subtotal rx ry
+        let subtotal = V.foldl1' (+) . V.zipWith (*) (V.take m sx) $ (V.take m sy)
+        in  hylo_loop subtotal m
     where
         m :: Int
         m = n `mod` 5
@@ -64,15 +62,17 @@ sdot n sx incx sy incy
             | otherwise = \ i -> (1+i-n)*inc
         -- hyloL :: ( a -> Maybe (b,a)) -> (c -> b -> c) -> c -> a -> c
         {-# INLINE [1] hylo_loop #-}
-        hylo_loop !c xs ys
-           | V.null xs = c
-           | V.null ys = c
+        hylo_loop !c !i
+           | i>=n = c
            | otherwise =
-               let xs' = V.drop 5 xs
-                   ys' = V.drop 5 ys
-                   c'  = c + (xs `V.unsafeIndex` 0)*(ys `V.unsafeIndex` 0)
-                       + (xs `V.unsafeIndex` 1)*(ys `V.unsafeIndex` 1)
-                       + (xs `V.unsafeIndex` 2)*(ys `V.unsafeIndex` 2)
-                       + (xs `V.unsafeIndex` 3)*(ys `V.unsafeIndex` 3)
-                       + (xs `V.unsafeIndex` 4)*(ys `V.unsafeIndex` 4)
-               in  hylo_loop c' xs' ys'
+               let i'  = i+5
+                   i1  = i+1
+                   i2  = i+2
+                   i3  = i+3
+                   i4  = i+4
+                   c'  = c + (sx `V.unsafeIndex` i)*(sy `V.unsafeIndex` i)
+                       + (sx `V.unsafeIndex` i1)*(sy `V.unsafeIndex` i1)
+                       + (sx `V.unsafeIndex` i2)*(sy `V.unsafeIndex` i2)
+                       + (sx `V.unsafeIndex` i3)*(sy `V.unsafeIndex` i3)
+                       + (sx `V.unsafeIndex` i4)*(sy `V.unsafeIndex` i4)
+               in  hylo_loop c' i'
