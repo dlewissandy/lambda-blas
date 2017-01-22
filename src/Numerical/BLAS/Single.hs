@@ -14,7 +14,7 @@ import qualified Data.Vector.Storable as V
 sdot_zip :: Vector Float -- ^ The vector u
     -> Vector Float      -- ^ The vector v
     -> Float             -- ^ The dot product u . v
-sdot_zip u v = V.foldl (+) 0 $ V.zipWith (*) u v
+sdot_zip u = V.foldl (+) 0 . V.zipWith (*) u
 
 
 {- | O(n) sdot computes the sum of the products of elements drawn from two
@@ -41,16 +41,19 @@ sdot :: Int -- ^ The number of summands
     -> Int          -- ^ the space between elements drawn from v
     -> Float        -- ^ The sum of the product of the elements.
 sdot n sx incx sy incy
-   | n < 1                  = error "Encountered zero or negative length vector"
-   | incx /=1 || incy /= 1 = V.foldl1' (+) . V.generate n $ productElems (ithIndex incx) (ithIndex incy)
-   | n < 5     = V.foldl1' (+) . V.zipWith (*) (V.take m sx) $ (V.take m sy)
+   | incx /=1 || incy /= 1  = V.foldl1' (+) . V.generate n $ productElems (ithIndex incx) (ithIndex incy)
+   | n < 5     = sumprods 0 0
    | m == 0    = hylo_loop 0 0
    | otherwise =
-        let subtotal = V.foldl1' (+) . V.zipWith (*) (V.take m sx) $ (V.take m sy)
+        let subtotal = sumprods 0 0
         in  hylo_loop subtotal m
     where
         m :: Int
         m = n `mod` 5
+        {-# INLINE sumprods #-}
+        sumprods !c !i
+            | i < m  = sumprods (c + sx `V.unsafeIndex` i * sy `V.unsafeIndex` i) (i+1)
+            | otherwise = c
         productElems :: (Int->Int) -> (Int->Int) -> Int -> Float
         {-# INLINE [0] productElems #-}
         productElems indexX indexY i = sx `V.unsafeIndex` (indexX i)
