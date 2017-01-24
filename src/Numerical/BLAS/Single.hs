@@ -41,7 +41,7 @@ sdot :: Int -- ^ The number of summands
     -> Int          -- ^ the space between elements drawn from v
     -> Float        -- ^ The sum of the product of the elements.
 sdot n sx incx sy incy
-   | incx /=1 || incy /= 1  = V.foldl1' (+) . V.generate n $ productElems (ithIndex incx) (ithIndex incy)
+   | incx /=1 || incy /= 1  = sumProdsInc
    | n < 5     = sumprods 0 0
    | m == 0    = hylo_loop 0 0
    | otherwise =
@@ -54,15 +54,17 @@ sdot n sx incx sy incy
         sumprods !c !i
             | i < m  = sumprods (c + sx `V.unsafeIndex` i * sy `V.unsafeIndex` i) (i+1)
             | otherwise = c
-        productElems :: (Int->Int) -> (Int->Int) -> Int -> Float
-        {-# INLINE [0] productElems #-}
-        productElems indexX indexY i = sx `V.unsafeIndex` (indexX i)
-                        * sy `V.unsafeIndex` (indexY i)
-        ithIndex :: Int -> Int -> Int
-        {-# INLINE [0] ithIndex #-}
-        ithIndex !inc
-            | inc>0     = \ i -> inc*i
-            | otherwise = \ i -> (1+i-n)*inc
+        {-# INLINE sumProdsInc #-}
+        sumProdsInc = sumprodloop 0 0 (firstIndex incx) (firstIndex incy)
+           where
+               {-# INLINE sumprodloop #-}
+               sumprodloop !c !k !i !j
+                  | k < n = sumprodloop (c + sx `V.unsafeIndex` i * sy`V.unsafeIndex`j) (k+1) (i+incx) (j+incy)
+                  | otherwise = c
+        {-# INLINE firstIndex #-}
+        firstIndex !inc
+            | inc>0     = 0
+            | otherwise = (1-n)*inc
         -- hyloL :: ( a -> Maybe (b,a)) -> (c -> b -> c) -> c -> a -> c
         {-# INLINE [1] hylo_loop #-}
         hylo_loop !c !i
