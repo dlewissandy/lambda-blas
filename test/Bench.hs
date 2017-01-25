@@ -12,7 +12,7 @@ import Criterion.Main
 import Numerical.BLAS.Single
 -- | This test suite
 import Gen
-import qualified OSX
+import qualified OSX as FORTRAN
 
 main :: IO ()
 main = do
@@ -26,13 +26,15 @@ benchmarks :: V.Vector Float -> V.Vector Float
            -> Ptr Float -> Ptr Float
            -> [Benchmark]
 benchmarks u v us vs = [ bgroup "sdot"
-   [ bench "naive" $ nf naive (u,v)
-   , bench "native" $ nf native (n,u,v)
-   , bench "cblas" $ nfIO $ cblas (n,us,vs)
+   [ bench "sdot_zip(u,v)" $ nf naive (u,v)
+   , bench "sdot(n,u,1,v,1)" $ nf native (n,u,1,v,1)
+   , bench "FORTRAN.sdot(n,u,1,v,1)" $ nfIO $ fortran (n,us,1,vs,1)
+   , bench "sdot(n,u,-1,v,-1)" $ nf native (n,u,-1,v,-1)
+   , bench "FORTRAN.sdot(n,u,-1,v,-1)" $ nfIO $ fortran (n,us,-1,vs,-1)
    ]
    ]
    where
    n = V.length u
-   native (a,b,c) = sdot a b 1 c 1
-   cblas  (a,b,c) = OSX.sdot a b 1 c 1
+   native (a,b,c,d,e) = sdot a b c d e
+   fortran  (a,b,c,d,e) = FORTRAN.sdot a b c d e
    naive (a,b) = sdot_zip a b

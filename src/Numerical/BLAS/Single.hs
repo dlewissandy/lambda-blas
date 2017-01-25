@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 -- | This module provides BLAS library functions for vectors of
 -- single precision floating point numbers.
 module Numerical.BLAS.Single(
@@ -13,7 +14,7 @@ import qualified Data.Vector.Storable as V
 sdot_zip :: Vector Float -- ^ The vector u
     -> Vector Float      -- ^ The vector v
     -> Float             -- ^ The dot product u . v
-sdot_zip u v = V.foldl (+) 0 $ V.zipWith (*) u v
+sdot_zip u = V.foldl (+) 0 . V.zipWith (*) u
 
 
 {- | O(n) sdot computes the sum of the products of elements drawn from two
@@ -40,44 +41,43 @@ sdot :: Int -- ^ The number of summands
     -> Int          -- ^ the space between elements drawn from v
     -> Float        -- ^ The sum of the product of the elements.
 sdot n sx incx sy incy
-   | n < 1                  = error "Encountered zero or negative length vector"
-   | incx /=1 || incy /= 1 = V.foldl1' (+) . V.generate n $ productElems (ithIndex incx) (ithIndex incy)
-   | n < 5     = V.foldl1' (+) . V.zipWith (*) sx $ sy
-   | m == 0    = hyloL splitAndMul5 sum5 0 (sx,sy)
+   | incx /=1 || incy /= 1  = sumProdsInc
+   | n < 5     = sumprods 0 0
+   | m == 0    = hylo_loop 0 0
    | otherwise =
-        let (lx,rx) = V.splitAt m sx
-            (ly,ry) = V.splitAt m sy
-            subtotal = V.foldl1' (+) . V.zipWith (*) lx $ ly
-        in  hyloL splitAndMul5 sum5 subtotal (rx, ry)
+        let subtotal = sumprods 0 0
+        in  hylo_loop subtotal m
     where
         m :: Int
         m = n `mod` 5
-        productElems :: (Int->Int) -> (Int->Int) -> Int -> Float
-        productElems indexX indexY i = sx `V.unsafeIndex` (indexX i)
-                        * sy `V.unsafeIndex` (indexY i)
-        splitAndMul5 :: (V.Vector Float, V.Vector Float) -> Maybe (V.Vector Float, (V.Vector Float, V.Vector Float))
-        splitAndMul5 (xs,ys)
-             | V.null xs || V.null ys = Nothing
-             | otherwise              = Just (
-                 V.zipWith (*) (V.take 5 xs) (V.take 5 ys)
-                 , (V.drop 5 xs, V.drop 5 ys))
-        ithIndex :: Int -> Int -> Int
-        {-# INLINE [0] ithIndex #-}
-        ithIndex inc
-            | inc>0     = \ i -> inc*i
-            | otherwise = \ i -> (1+i-n)*inc
-        sum5 :: Float -> V.Vector Float -> Float
-        sum5 subtotal' summands = subtotal' + summands `V.unsafeIndex` 0
-            + summands `V.unsafeIndex` 1 + summands `V.unsafeIndex` 2
-            + summands `V.unsafeIndex` 3 + summands `V.unsafeIndex` 4
-
-hyloL :: ( a -> Maybe (b,a)) -> (c -> b -> c) -> c -> a -> c
-{-# INLINE [1] hyloL #-}
-hyloL f g = hylo_loop
-   where
-   {-# INLINE [0] hylo_loop #-}
-   hylo_loop c a = do
-       let r = f a
-       case r of
-           Nothing -> c
-           Just (b,a') -> hylo_loop (g c b) a'
+        {-# INLINE sumprods #-}
+        sumprods !c !i
+            | i < m  = sumprods (c + sx `V.unsafeIndex` i * sy `V.unsafeIndex` i) (i+1)
+            | otherwise = c
+        {-# INLINE sumProdsInc #-}
+        sumProdsInc = sumprodloop 0 0 (firstIndex incx) (firstIndex incy)
+           where
+               {-# INLINE sumprodloop #-}
+               sumprodloop !c !k !i !j
+                  | k < n = sumprodloop (c + sx `V.unsafeIndex` i * sy`V.unsafeIndex`j) (k+1) (i+incx) (j+incy)
+                  | otherwise = c
+        {-# INLINE firstIndex #-}
+        firstIndex !inc
+            | inc>0     = 0
+            | otherwise = (1-n)*inc
+        -- hyloL :: ( a -> Maybe (b,a)) -> (c -> b -> c) -> c -> a -> c
+        {-# INLINE [1] hylo_loop #-}
+        hylo_loop !c !i
+           | i>=n = c
+           | otherwise =
+               let i'  = i+5
+                   i1  = i+1
+                   i2  = i+2
+                   i3  = i+3
+                   i4  = i+4
+                   c'  = c + (sx `V.unsafeIndex` i)*(sy `V.unsafeIndex` i)
+                       + (sx `V.unsafeIndex` i1)*(sy `V.unsafeIndex` i1)
+                       + (sx `V.unsafeIndex` i2)*(sy `V.unsafeIndex` i2)
+                       + (sx `V.unsafeIndex` i3)*(sy `V.unsafeIndex` i3)
+                       + (sx `V.unsafeIndex` i4)*(sy `V.unsafeIndex` i4)
+               in  hylo_loop c' i'
