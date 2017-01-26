@@ -1,7 +1,7 @@
 -- | This module defines the Foreign function calls to CBLAS library.  For
 -- full documentation consult <http://www.netlib.org/blas/>.
 {-# LANGUAGE ForeignFunctionInterface #-}
-module OSX(sdot) where
+module Foreign(sdot) where
 
 import Foreign.Ptr
 import Foreign.Marshal.Alloc

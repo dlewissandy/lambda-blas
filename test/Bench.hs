@@ -12,7 +12,7 @@ import Criterion.Main
 import Numerical.BLAS.Single
 -- | This test suite
 import Gen
-import qualified OSX as FORTRAN
+import qualified Foreign as FORTRAN
 
 main :: IO ()
 main = do

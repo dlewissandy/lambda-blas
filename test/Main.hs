@@ -12,7 +12,7 @@ import Test.Tasty.HUnit
 import Numerical.BLAS.Single
 -- | This test suite
 import Gen
-import qualified OSX
+import qualified Foreign as Fortran
 
 -- | Perform the tests
 main :: IO ()
@@ -59,7 +59,7 @@ dotTest testname func genInc = testProperty testname $
        withArray (V.toList u) $ \ us ->
        withArray (V.toList v) $ \ vs -> do
            -- compute the expected and observed values
-           expected <- OSX.sdot n us incx vs incy
+           expected <- Fortran.sdot n us incx vs incy
            let observed = func n u incx v incy
            runTest expected observed
       where
