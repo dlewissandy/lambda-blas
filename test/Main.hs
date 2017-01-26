@@ -23,21 +23,11 @@ tests :: TestTree
 tests = testGroup "BLAS"
     [ genTests "Double" (1::Double) -- test the random number generators for IEEE Doubles
     , genTests "Float"  (1::Float)  -- test the random number generators for IEEE Singles
-    , nativeTest     -- Confirm that the native sdot function is byte equivalent to the CBLAS implementation
-    , naiveTest      -- Confirm that the naive dot product function is equivalent to the CBLAS implementation
+    , testGroup "Level-1"
+        [ dotTest "sdot" sdot (elements [-5..5])
+        , asumTest "saSum" sasum (elements [1..5])
+        ]
     ]
-
--- | Evidence that the naive sdot function is byte equivalent to the CBLAS
--- implementation.  Vectors of length 1-10 are tested having elements that are
--- in the range of approximately (epsilon/2,2/epsilon).
-naiveTest :: TestTree
-naiveTest = dotTest "sdot_zip" (\ _ u _ v _ -> sdot_zip u v) (return 1)
-
--- | Evidence that the native sdot function is byte equivalent to the CBLAS
--- implementation.  Vectors of length 1-10 are tested having elements that are
--- in the range of approximately (epsilon/2,2/epsilon).
-nativeTest :: TestTree
-nativeTest = dotTest "sdot" sdot (elements [-1,1])
 
 -- | Evidence that the native sdot function is byte equivalent to the CBLAS
 -- implementation.  Vectors of length 1-10 are tested having elements that are
@@ -48,12 +38,13 @@ dotTest :: String
          -> TestTree
 dotTest testname func genInc = testProperty testname $
     -- Choose the length of the vector
-    forAll (choose (1,10)) $ \ n ->
+    forAll (choose (1,100)) $ \ n ->
     -- Randomly generate two vectors of the chosen length
-    forAll (genNVector (genFloat genEveryday) n) $ \ u ->
-    forAll (genNVector (genFloat genEveryday) n) $ \ v ->
     forAll (genInc) $ \ incx ->
     forAll (genInc) $ \ incy ->
+    forAll (genNVector (genFloat genEveryday) (1+(n-1)*abs incx )) $ \ u ->
+    forAll (genNVector (genFloat genEveryday) (1+(n-1)*abs incy )) $ \ v ->
+
        -- monadically marshal the vectors into arrays for use with CBLAS
        ioProperty $
        withArray (V.toList u) $ \ us ->
@@ -62,15 +53,40 @@ dotTest testname func genInc = testProperty testname $
            expected <- Fortran.sdot n us incx vs incy
            let observed = func n u incx v incy
            runTest expected observed
-      where
-      runTest expected observed =
-          if expected==observed
-                then return True
-                else do
-                    putStrLn ""
-                    putStrLn $ "EXPECTED: " ++ show expected
-                    putStrLn $ "OBSERVED: " ++ show observed
-                    return False
+
+-- | Evidence that the native sdot function is byte equivalent to the CBLAS
+-- implementation.  Vectors of length 1-10 are tested having elements that are
+-- in the range of approximately (epsilon/2,2/epsilon)
+asumTest :: String
+         -> (Int -> V.Vector Float -> Int -> Float)
+         -> Gen Int
+         -> TestTree
+asumTest testname func genInc = testProperty testname $
+    -- Choose the length of the vector
+    forAll (choose (1,100)) $ \ n ->
+    -- Randomly generate two vectors of the chosen length
+    forAll (genInc) $ \ incx ->
+    forAll (genNVector (genFloat genEveryday) (1+(n-1)*abs incx )) $ \ u ->
+    -- monadically marshal the vectors into arrays for use with CBLAS
+       ioProperty $
+       withArray (V.toList u) $ \ us -> do
+           -- compute the expected and observed values
+           expected <- Fortran.sasum n us incx
+           let observed = func n u incx
+           runTest expected observed
+
+-- | Compare the observed and expected values and print ruman readable error
+-- message.
+runTest :: (Show a, Eq a) => a -> a -> IO Bool
+runTest expected observed =
+  if expected==observed
+        then return True
+        else do
+            putStrLn ""
+            putStrLn $ "EXPECTED: " ++ show expected
+            putStrLn $ "OBSERVED: " ++ show observed
+            return False
+
 
 -- | Test all the random number generators for a given floating point type.
 genTests :: (Random a, RealFloat a,Show a)=> String -> a -> TestTree
