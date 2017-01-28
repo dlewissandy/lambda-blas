@@ -17,6 +17,7 @@ module Gen
    , genEveryday
    , genVector
    , genNVector
+   , genNiceFloat
    -- * Ranges
    , denormalizedRange
    , tinyRange
@@ -33,6 +34,14 @@ module Gen
 import System.Random
 import Test.QuickCheck.Gen
 import Data.Vector.Storable
+
+-- | Generate a zero, positive everyday number or negative everyday number
+genNiceFloat :: Gen Float
+genNiceFloat = frequency
+    [(10,pure 0)
+    ,(40,genEveryday (1::Float))
+    ,(40,genNegative (genEveryday (1::Float)))
+    ]
 
 -- | Given a generator for the elements, construct a random vector of length
 -- between 1 and 1000.

@@ -1,10 +1,12 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE MagicHash #-}
 -- | This module provides BLAS library functions for vectors of
 -- single precision floating point numbers.
 module Numerical.BLAS.Single(
    sdot_zip,
    sdot,
    sasum,
+   snrm2,
     ) where
 
 import Data.Vector.Storable(Vector)
@@ -44,10 +46,10 @@ sdot :: Int -- ^ The number of summands
 sdot n sx incx sy incy
    | incx /=1 || incy /= 1  = sumProdsInc
    | n < 5     = sumprods 0 0
-   | m == 0    = hylo_loop 0 0
+   | m == 0    = unrolled 0 0
    | otherwise =
         let subtotal = sumprods 0 0
-        in  hylo_loop subtotal m
+        in  unrolled subtotal m
     where
         m :: Int
         m = n `mod` 5
@@ -63,8 +65,8 @@ sdot n sx incx sy incy
                   | k < n = sumprodloop (c + sx `V.unsafeIndex` i * sy`V.unsafeIndex`j) (k+1) (i+incx) (j+incy)
                   | otherwise = c
         -- hyloL :: ( a -> Maybe (b,a)) -> (c -> b -> c) -> c -> a -> c
-        {-# INLINE [1] hylo_loop #-}
-        hylo_loop !c !i
+        {-# INLINE [1] unrolled #-}
+        unrolled !c !i
            | i>=n = c
            | otherwise =
                let i'  = i+5
@@ -77,7 +79,7 @@ sdot n sx incx sy incy
                        + (sx `V.unsafeIndex` i2)*(sy `V.unsafeIndex` i2)
                        + (sx `V.unsafeIndex` i3)*(sy `V.unsafeIndex` i3)
                        + (sx `V.unsafeIndex` i4)*(sy `V.unsafeIndex` i4)
-               in  hylo_loop c' i'
+               in  unrolled c' i'
    -- O(1) - Compute the starting index of an iterative vector traversal
    -- given the length of the vector and the iterative step size.
         firstIndex :: Int -- ^ the iterative step
@@ -102,7 +104,7 @@ sdot n sx incx sy incy
   No bound checks are performed.   The calling program should ensure that:
 
 @
-    length x >= (1 + (n-1)*abs(incx))
+    length u >= (1 + (n-1)*abs(incx))
 @
 -}
 sasum :: Int -- ^ The number of summands
@@ -113,8 +115,8 @@ sasum n sx !incx
   | n < 1 || incx <1 = 0
   | incx /=1         = sumAbsInc (n*incx)
   | n < 5            = sumAbs 0 0
-  | m == 0           = hylo_loop 0 0
-  | otherwise        = hylo_loop (sumAbs 0 0) m
+  | m == 0           = unrolled 0 0
+  | otherwise        = unrolled (sumAbs 0 0) m
    where
        m :: Int
        m = n `mod` 6
@@ -129,8 +131,8 @@ sasum n sx !incx
               sumabsloop !c !i
                  | i < imax = sumabsloop (c + abs (sx `V.unsafeIndex` i)) (i+incx)
                  | otherwise = c
-       {-# INLINE [1] hylo_loop #-}
-       hylo_loop !c !i
+       {-# INLINE [1] unrolled #-}
+       unrolled !c !i
           | i>=n = c
           | otherwise =
               let i'  = i+6
@@ -145,4 +147,52 @@ sasum n sx !incx
                       + (abs $ sx `V.unsafeIndex` i3)
                       + (abs $ sx `V.unsafeIndex` i4)
                       + (abs $ sx `V.unsafeIndex` i5)
-              in  hylo_loop c' i'
+              in  unrolled c' i'
+
+{- | O(n) sasum computes the sum of the squares of elements drawn a
+vector according to the following specification
+
+@
+ sdot n u incx = sum { u[i*incx] ^2   | i<=[0..n-1] }
+@
+
+The elements selected from the vector are controlled by the parameters
+n and incx.   The parameter n determines the number of summands, while
+the parameter incx determines the spacing between selected elements.
+
+Note: The BLAS implementation computes the scaled sum of squares such that
+1.0 < ssq < 2*n and scale is the maximum of either 1.0 or the largest absolute
+value of the elments of u.
+
+No bound checks are performed.   The calling program should ensure that:
+
+@
+  length u >= (1 + (n-1)*abs(incx))
+@
+-}
+snrm2 :: Int -- ^ The number of summands
+ -> Vector Float -- ^ the vector u
+ -> Int          -- ^ the space between elements drawn from u
+ -> Float        -- ^ The l2 norm of the vector u
+snrm2 !n sx !incx
+    | n<1 || incx<1 = 0.0
+    | n==1          = abs $ sx `V.unsafeIndex` 0
+    | otherwise     = slassq (incx*(n-1))
+    where
+    slassq !imax = slassq_loop 0 0.0 1.0
+        where
+        slassq_loop :: Int -> Float -> Float -> Float
+        {-# INLINE slassq_loop #-}
+        slassq_loop !i !scale !ssq
+            | i > imax = scale*sqrt ssq
+            | otherwise =
+                let xi = sx `V.unsafeIndex` i
+                    f:: Float -> Float
+                    {-# INLINE f #-}
+                    f x = case scale < x of
+                        True  -> slassq_loop (i+incx) x (1.0 + ssq * (scale/x)**2.0)
+                        False -> slassq_loop (i+incx) scale (ssq + (x/scale)**2.0)
+                in  case compare xi 0.0 of
+                       EQ -> slassq_loop (i+incx) scale ssq
+                       LT -> f (negate xi)
+                       GT -> f xi
