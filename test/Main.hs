@@ -26,8 +26,9 @@ tests = testGroup "BLAS"
     , genTests "Float"  (1::Float)  -- test the random number generators for IEEE Singles
     , testGroup "Level-1"
         [ dotTest "sdot" sdot (elements [-5..5])
-        , ivifTest "sasum" sasum (Fortran.sasum) (elements [1..5])
-        , ivifTest "snrm2" snrm2 (Fortran.snrm2) (elements [1..5])
+        , iviTest "sasum" sasum (Fortran.sasum) (elements [1..5])
+        , iviTest "snrm2" snrm2 (Fortran.snrm2) (elements [1..5])
+        , iviTest "isamax" (\ n u incx -> succ $ isamax n u incx ) (Fortran.isamax) (elements [1..5])
         ]
     ]
 
@@ -60,18 +61,18 @@ dotTest testname func genInc = testProperty testname $
 -- of the types
 --
 -- @
--- native :: (Int -> Vector Float -> Int -> Float )
--- fortran :: (Int -> Ptr Float -> Int -> IO Float )
+-- native :: (Int -> Vector Float -> Int -> a )
+-- fortran :: (Int -> Ptr Float -> Int -> IO a )
 -- @
 --
 -- produce byte equivalent to the results.   Vectors of length 1-10 are tested
 -- having elements that are in the range of approximately (epsilon/2,2/epsilon)
-ivifTest :: String
-        -> (Int -> V.Vector Float -> Int -> Float)
-        -> (Int -> Ptr Float -> Int -> IO Float)
+iviTest :: (Eq a, Show a) => String
+        -> (Int -> V.Vector Float -> Int -> a)
+        -> (Int -> Ptr Float -> Int -> IO a)
         -> Gen Int
         -> TestTree
-ivifTest testname func funcIO genInc = testProperty testname $
+iviTest testname func funcIO genInc = testProperty testname $
    -- Choose the length of the vector
    forAll (choose (0,100)) $ \ n ->
    -- Randomly generate two vectors of the chosen length

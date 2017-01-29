@@ -3,6 +3,7 @@
 -- | This module provides BLAS library functions for vectors of
 -- single precision floating point numbers.
 module Numerical.BLAS.Single(
+   isamax,
    sdot_zip,
    sdot,
    sasum,
@@ -196,3 +197,33 @@ snrm2 !n sx !incx
                        EQ -> slassq_loop (i+incx) scale ssq
                        LT -> f (negate xi)
                        GT -> f xi
+
+isamax :: Int -> V.Vector Float -> Int -> Int
+isamax !n sx !incx
+   | n < 1 || incx < 1 = -1
+   | n == 1            = 0
+   | incx == 1         = findmax1 0 (abs $ sx `V.unsafeIndex` 0) 1
+   | otherwise         = findmax 0 (abs $ sx `V.unsafeIndex` 0) 1 incx
+   where
+       findmax1 !k !c !i
+          | i >= n  = k
+          | otherwise =
+              let xi = sx `V.unsafeIndex` i
+                  f x = case x > c of
+                       True -> findmax1 i x (i+1)
+                       False -> findmax1 k c (i+1)
+              in  case compare xi 0.0 of
+                      EQ -> findmax1 k c (i+1)
+                      LT -> f $ negate xi
+                      GT -> f xi
+       findmax !k !c !i !ix
+          | i >= n  = k
+          | otherwise =
+              let xi = sx `V.unsafeIndex` ix
+                  f x = case x > c of
+                       True -> findmax i x (i+1) (ix+incx)
+                       False -> findmax k c (i+1) (ix+incx)
+              in  case compare xi 0.0 of
+                      EQ -> findmax k c (i+1) (ix+incx)
+                      LT -> f $ negate xi
+                      GT -> f xi
