@@ -4,6 +4,7 @@ module Main( main ) where
 
 import qualified Data.Vector.Storable as V
 import Foreign.Marshal.Array
+import Foreign.Ptr
 import System.Random
 import Test.Tasty
 import Test.Tasty.QuickCheck
@@ -25,7 +26,8 @@ tests = testGroup "BLAS"
     , genTests "Float"  (1::Float)  -- test the random number generators for IEEE Singles
     , testGroup "Level-1"
         [ dotTest "sdot" sdot (elements [-5..5])
-        , asumTest "saSum" sasum (elements [1..5])
+        , ivifTest "sasum" sasum (Fortran.sasum) (elements [1..5])
+        , ivifTest "snrm2" snrm2 (Fortran.snrm2) (elements [1..5])
         ]
     ]
 
@@ -42,8 +44,8 @@ dotTest testname func genInc = testProperty testname $
     -- Randomly generate two vectors of the chosen length
     forAll (genInc) $ \ incx ->
     forAll (genInc) $ \ incy ->
-    forAll (genNVector (genFloat genEveryday) (1+(n-1)*abs incx )) $ \ u ->
-    forAll (genNVector (genFloat genEveryday) (1+(n-1)*abs incy )) $ \ v ->
+    forAll (genNVector genNiceFloat (1+(n-1)*abs incx )) $ \ u ->
+    forAll (genNVector genNiceFloat (1+(n-1)*abs incy )) $ \ v ->
 
        -- monadically marshal the vectors into arrays for use with CBLAS
        ioProperty $
@@ -54,26 +56,35 @@ dotTest testname func genInc = testProperty testname $
            let observed = func n u incx v incy
            runTest expected observed
 
--- | Evidence that the native sdot function is byte equivalent to the CBLAS
--- implementation.  Vectors of length 1-10 are tested having elements that are
--- in the range of approximately (epsilon/2,2/epsilon)
-asumTest :: String
-         -> (Int -> V.Vector Float -> Int -> Float)
-         -> Gen Int
-         -> TestTree
-asumTest testname func genInc = testProperty testname $
-    -- Choose the length of the vector
-    forAll (choose (1,100)) $ \ n ->
-    -- Randomly generate two vectors of the chosen length
-    forAll (genInc) $ \ incx ->
-    forAll (genNVector (genFloat genEveryday) (1+(n-1)*abs incx )) $ \ u ->
-    -- monadically marshal the vectors into arrays for use with CBLAS
-       ioProperty $
-       withArray (V.toList u) $ \ us -> do
-           -- compute the expected and observed values
-           expected <- Fortran.sasum n us incx
-           let observed = func n u incx
-           runTest expected observed
+-- | Evidence that the native a native haskell function and a FOTRAN function
+-- of the types
+--
+-- @
+-- native :: (Int -> Vector Float -> Int -> Float )
+-- fortran :: (Int -> Ptr Float -> Int -> IO Float )
+-- @
+--
+-- produce byte equivalent to the results.   Vectors of length 1-10 are tested
+-- having elements that are in the range of approximately (epsilon/2,2/epsilon)
+ivifTest :: String
+        -> (Int -> V.Vector Float -> Int -> Float)
+        -> (Int -> Ptr Float -> Int -> IO Float)
+        -> Gen Int
+        -> TestTree
+ivifTest testname func funcIO genInc = testProperty testname $
+   -- Choose the length of the vector
+   forAll (choose (0,100)) $ \ n ->
+   -- Randomly generate two vectors of the chosen length
+   forAll (genInc) $ \ incx ->
+   forAll (genNVector (genNiceFloat) (1+(n-1)*abs incx )) $ \ u ->
+   -- monadically marshal the vectors into arrays for use with CBLAS
+      ioProperty $
+      withArray (V.toList u) $ \ us -> do
+          -- compute the expected and observed values
+          expected <- funcIO n us incx
+          let observed = func n u incx
+          runTest expected observed
+
 
 -- | Compare the observed and expected values and print ruman readable error
 -- message.
