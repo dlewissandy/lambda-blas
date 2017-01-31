@@ -154,7 +154,7 @@ sasum n sx !incx
 vector according to the following specification
 
 @
- sdot n u incx = sum { u[i*incx] ^2   | i<=[0..n-1] }
+ snrm2 n u incx = sum { u[i*incx] ^2   | i<=[0..n-1] }
 @
 
 The elements selected from the vector are controlled by the parameters
@@ -198,6 +198,28 @@ snrm2 !n sx !incx
                        LT -> f (negate xi)
                        GT -> f xi
 
+
+{- | O(n) isamax computes the index of the element of a vector having the
+largest absolute value according to the following specification.
+
+@
+    isamax n u incx = i
+    where
+        zs = [ abs u[i*incx]   | i<=[0..n-1] ]
+        a  = max zs
+        Just i = findIndex a zs
+@
+
+ The elements selected from the vector are controlled by the parameters
+ n and incx.   The parameter n determines the number of summands, while
+ the parameter incx determines the spacing between selected elements.
+
+ No bound checks are performed.   The calling program should ensure that:
+
+@
+   length u >= (1 + (n-1)*abs(incx))
+@
+-}
 isamax :: Int -> V.Vector Float -> Int -> Int
 isamax !n sx !incx
    | n < 1 || incx < 1 = -1
