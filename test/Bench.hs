@@ -20,18 +20,20 @@ main = do
     let n = 10001
     u<- generate $ genNVector (genFloat genEveryday) n
     v<- generate $ genNVector (genFloat genEveryday) n
+    a<- generate $ genFloat genEveryday
     withArray (V.toList u) $ \ us ->
        withArray (V.toList v) $ \ vs ->
-        defaultMain [ level1_benchs n u v us vs ]
+        defaultMain [ level1_benchs n a u v us vs ]
 
 -- | Level 1 BLAS benchmarks
-level1_benchs :: Int -> V.Vector Float -> V.Vector Float
+level1_benchs :: Int -> Float -> V.Vector Float -> V.Vector Float
            -> Ptr Float -> Ptr Float  -> Benchmark
-level1_benchs n u v us vs = bgroup "level-1"
+level1_benchs n a u v us vs = bgroup "level-1"
     [ sdot_benchs n u v us vs
     , sasum_benchs n u us
     , snrm2_benchs n u us
     , isamax_benchs n u us
+    , sdsdot_benchs n a u v us vs
     ]
 
 -- Benchmarks for the sdot function
@@ -98,3 +100,18 @@ isamax_benchs n u us = bgroup "isamax"
         nf (\ (a,b,c) -> isamax a b c) (n,u,incx)
     foreign !incx = bench ("FOREIGN.isamax(n,u,"++show incx++")") $
         nfIO $ FORTRAN.isamax n us incx
+
+-- Benchmarks for the sdsdot function
+sdsdot_benchs :: Int -> Float -> V.Vector Float -> V.Vector Float
+    -> Ptr Float -> Ptr Float -> Benchmark
+sdsdot_benchs n a u v us vs = bgroup "sdsdot"
+   [ native 1 1          -- test corner case when both incx and incy are 1
+   , foreign 1 1
+   , native (-1) (-1)    -- test corner case when incx and incy are not equal or are negative
+   , foreign (-1) (-1)
+   ]
+   where
+   native !incx !incy = bench ("sdsdot(n,aa,u,"++show incx++",v,"++show incy++")") $
+       nf (\ (aa,b,c,d,e,f) -> sdsdot aa b c d e f) (n,a,u,incx,v,incy)
+   foreign !incx !incy = bench ("FOREIGN.sdsdot(n,a,u,"++show incx++",v,"++show incy++")") $
+       nfIO $ FORTRAN.sdsdot n a us incx vs incy
