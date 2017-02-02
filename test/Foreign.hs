@@ -2,7 +2,7 @@
 -- full documentation consult <http://www.netlib.org/blas/>.
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Foreign(
---    isamax,
+    isamax,
     sasum,
 --    saxpy,
 --    scnrm2,
@@ -23,7 +23,7 @@ import Foreign.Ptr
 import Foreign.Marshal.Alloc
 import Foreign.Storable
 
--- foreign import ccall "isamax_" isamax_foreign :: Ptr Int -> Ptr Float -> Ptr Int -> IO Int
+foreign import ccall "isamax_" isamax_foreign :: Ptr Int -> Ptr Float -> Ptr Int -> IO Int
 foreign import ccall "sasum_"  sasum_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 --foreign import ccall "saxpy_"  saxpy_foreign  :: Ptr Int -> Ptr Float ->  Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
 --foreign import ccall "scnrm2_" scnrm2_foreign :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
@@ -60,21 +60,30 @@ sdot n px incx py incy =
 -- | Call the FORTRAN implementation of the sasum function.   For details
 -- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
 sasum :: Int -> Ptr Float -> Int -> IO Float
-sasum = ivif_foreign sasum_foreign
+sasum = ivi_foreign sasum_foreign
 
 -- | Call the FORTRAN implementation of the snrm2 function.   For details
 -- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
 snrm2 :: Int -> Ptr Float -> Int -> IO Float
-snrm2 = ivif_foreign snrm2_foreign
+snrm2 = ivi_foreign snrm2_foreign
+
+-- | Call the FORTRAN implementation of the snrm2 function.   For details
+-- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
+isamax :: Int -> Ptr Float -> Int -> IO Int
+isamax = ivi_foreign isamax_foreign
+
+-- =============================================================================
+-- HELPER FUNCTIONS
+-- =============================================================================
 
 -- A helper function for wrapping a foreign call to a function of the type
 -- of the first argument.
-ivif_foreign :: (Ptr Int -> Ptr Float -> Ptr Int -> IO Float)
+ivi_foreign :: (Ptr Int -> Ptr Float -> Ptr Int -> IO a)
   -> Int
   -> Ptr Float
   -> Int
-  -> IO Float
-ivif_foreign f n px incx =
+  -> IO a
+ivi_foreign f n px incx =
     alloca $ \ pn ->
     alloca $ \ pincx -> do
         poke pn n

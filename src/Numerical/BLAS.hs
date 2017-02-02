@@ -1,3 +1,5 @@
+{- | This module re-exports the BLAS level 1 functions for Floating
+point and complex data types -}
 module Numerical.BLAS(
     --module Numerical.BLAS.Complex,
     --module Numerical.BLAS.Double,

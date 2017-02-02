@@ -31,6 +31,7 @@ level1_benchs n u v us vs = bgroup "level-1"
     [ sdot_benchs n u v us vs
     , sasum_benchs n u us
     , snrm2_benchs n u us
+    , isamax_benchs n u us
     ]
 
 -- Benchmarks for the sdot function
@@ -81,3 +82,19 @@ snrm2_benchs n u us = bgroup "snrm2"
         nf (\ (a,b,c) -> snrm2 a b c) (n,u,incx)
     foreign !incx = bench ("FOREIGN.snrm2(n,u,"++show incx++")") $
         nfIO $ FORTRAN.snrm2 n us incx
+
+-- | benchmarks for the isamax function
+isamax_benchs :: Int -> V.Vector Float -> Ptr Float -> Benchmark
+isamax_benchs n u us = bgroup "isamax"
+    [ native 0    -- test corner case when incx < 1
+    , foreign 0
+    , native 1    -- test corner case when incx = 1
+    , foreign 1
+    , native 2    -- test corner case when incx >1
+    , foreign 2
+    ]
+    where
+    native !incx = bench ("isamax(n,u,"++show incx++")") $
+        nf (\ (a,b,c) -> isamax a b c) (n,u,incx)
+    foreign !incx = bench ("FOREIGN.isamax(n,u,"++show incx++")") $
+        nfIO $ FORTRAN.isamax n us incx
