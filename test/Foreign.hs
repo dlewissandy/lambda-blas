@@ -5,11 +5,9 @@ module Foreign(
     isamax,
     sasum,
 --    saxpy,
---    scnrm2,
 --    scopy,
---    sdsdot,
+    sdsdot,
     sdot,
---    snrm2,
     snrm2,
 --    srot,
 --    srotg,
@@ -29,7 +27,7 @@ foreign import ccall "sasum_"  sasum_foreign  :: Ptr Int -> Ptr Float -> Ptr Int
 --foreign import ccall "scnrm2_" scnrm2_foreign :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 --foreign import ccall "scopy_"  scopy_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
 foreign import ccall "sdot_"   sdot_foreign   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
---foreign import ccall "sdsdot_" sdsdot_foreign :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
+foreign import ccall "sdsdot_" sdsdot_foreign :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall "snrm2_"   snrm2_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 --foreign import ccall "srot_"   srot_foreign   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Float -> IO ()
 --foreign import ccall "srotg_"  srotg_foreign  :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
@@ -47,15 +45,7 @@ sdot :: Int       -- The number of summands
     -> Ptr Float  -- A pointer to the vector y
     -> Int        -- The increment to use when traversing y
     -> IO Float   -- The sum of the elementwise products of x and y.
-sdot n px incx py incy =
-    alloca $ \ pn ->
-    alloca $ \ pincx ->
-    alloca $ \ pincy -> do
-        poke pn n
-        poke pincx incx
-        poke pincy incy
-        sdot_foreign pn px pincx py pincy
-
+sdot = iviivi_foreign sdot_foreign
 
 -- | Call the FORTRAN implementation of the sasum function.   For details
 -- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
@@ -67,10 +57,19 @@ sasum = ivi_foreign sasum_foreign
 snrm2 :: Int -> Ptr Float -> Int -> IO Float
 snrm2 = ivi_foreign snrm2_foreign
 
--- | Call the FORTRAN implementation of the snrm2 function.   For details
+-- | Call the FORTRAN implementation of the isamax function.   For details
 -- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
 isamax :: Int -> Ptr Float -> Int -> IO Int
 isamax = ivi_foreign isamax_foreign
+
+-- | Call the FORTRAN implementation of the sdsdot function.   For details
+-- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
+sdsdot :: Int -> Float -> Ptr Float -> Int -> Ptr Float -> Int -> IO Float
+sdsdot n a px incx py incy =
+     alloca $ \ pa -> do
+        poke pa a
+        iviivi_foreign (\ pn _ pincx _ pincy ->
+            sdsdot_foreign pn pa px pincx py pincy ) n px incx py incy
 
 -- =============================================================================
 -- HELPER FUNCTIONS
@@ -89,3 +88,22 @@ ivi_foreign f n px incx =
         poke pn n
         poke pincx incx
         f pn px pincx
+
+-- A helper function for wrapping a foreign call to a function of the type
+-- of the first argument.
+iviivi_foreign :: (Ptr Int -> Ptr Float -> Ptr Int
+    -> Ptr Float -> Ptr Int -> IO a)
+    -> Int
+    -> Ptr Float
+    -> Int
+    -> Ptr Float
+    -> Int
+    -> IO a
+iviivi_foreign f n px incx py incy =
+    alloca $ \ pn ->
+    alloca $ \ pincx ->
+    alloca $ \ pincy -> do
+        poke pn n
+        poke pincx incx
+        poke pincy incy
+        f pn px pincx py pincy

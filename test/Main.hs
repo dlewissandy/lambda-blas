@@ -26,6 +26,7 @@ tests = testGroup "BLAS"
     , genTests "Float"  (1::Float)  -- test the random number generators for IEEE Singles
     , testGroup "Level-1"
         [ dotTest "sdot" sdot (elements [-5..5])
+        , sdsdotTest "sdsdot" sdsdot (elements [-5..5])
         , iviTest "sasum" sasum (Fortran.sasum) (elements [1..5])
         , iviTest "snrm2" snrm2 (Fortran.snrm2) (elements [1..5])
         , iviTest "isamax" (\ n u incx -> succ $ isamax n u incx ) (Fortran.isamax) (elements [1..5])
@@ -56,6 +57,32 @@ dotTest testname func genInc = testProperty testname $
            expected <- Fortran.sdot n us incx vs incy
            let observed = func n u incx v incy
            runTest expected observed
+
+-- | Evidence that the native sdsdot function is byte equivalent to the BLAS
+-- implementation.  Vectors of length 1-100 are tested having elements that are
+-- in the range of approximately +/-(epsilon/2,2/epsilon)
+sdsdotTest :: String
+        -> (Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float)
+        -> Gen Int
+        -> TestTree
+sdsdotTest testname func genInc = testProperty testname $
+   -- Choose the length of the vector
+   forAll (choose (1,100)) $ \ n ->
+   forAll genNiceFloat $ \ a ->
+   -- Randomly generate two vectors of the chosen length
+   forAll (genInc) $ \ incx ->
+   forAll (genInc) $ \ incy ->
+   forAll (genNVector genNiceFloat (1+(n-1)*abs incx )) $ \ u ->
+   forAll (genNVector genNiceFloat (1+(n-1)*abs incy )) $ \ v ->
+
+      -- monadically marshal the vectors into arrays for use with CBLAS
+      ioProperty $
+      withArray (V.toList u) $ \ us ->
+      withArray (V.toList v) $ \ vs -> do
+          -- compute the expected and observed values
+          expected <- Fortran.sdsdot n a us incx vs incy
+          let observed = func n a u incx v incy
+          runTest expected observed
 
 -- | Evidence that the native a native haskell function and a FOTRAN function
 -- of the types

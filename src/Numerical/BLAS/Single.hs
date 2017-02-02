@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE MagicHash #-}
+{-# LANGUAGE ViewPatterns #-}
 -- | This module provides BLAS library functions for vectors of
 -- single precision floating point numbers.
 module Numerical.BLAS.Single(
@@ -8,10 +9,12 @@ module Numerical.BLAS.Single(
    sdot,
    sasum,
    snrm2,
+   sdsdot,
     ) where
 
 import Data.Vector.Storable(Vector)
 import qualified Data.Vector.Storable as V
+import GHC.Exts
 
 {- | O(n) compute the dot product of two vectors using zip and fold
 -}
@@ -19,7 +22,6 @@ sdot_zip :: Vector Float -- ^ The vector u
     -> Vector Float      -- ^ The vector v
     -> Float             -- ^ The dot product u . v
 sdot_zip u = V.foldl (+) 0 . V.zipWith (*) u
-
 
 {- | O(n) sdot computes the sum of the products of elements drawn from two
    vectors according to the following specification:
@@ -59,7 +61,7 @@ sdot n sx incx sy incy
             | i < m  = sumprods (c + sx `V.unsafeIndex` i * sy `V.unsafeIndex` i) (i+1)
             | otherwise = c
         {-# INLINE sumProdsInc #-}
-        sumProdsInc = sumprodloop 0 0 (firstIndex incx) (firstIndex incy)
+        sumProdsInc = sumprodloop 0 0 (firstIndex n incx) (firstIndex n incy)
            where
                {-# INLINE sumprodloop #-}
                sumprodloop !c !k !i !j
@@ -81,14 +83,14 @@ sdot n sx incx sy incy
                        + (sx `V.unsafeIndex` i3)*(sy `V.unsafeIndex` i3)
                        + (sx `V.unsafeIndex` i4)*(sy `V.unsafeIndex` i4)
                in  unrolled c' i'
-   -- O(1) - Compute the starting index of an iterative vector traversal
-   -- given the length of the vector and the iterative step size.
-        firstIndex :: Int -- ^ the iterative step
-                  -> Int -- ^ The index of the first iterative step
-        {-# INLINE firstIndex #-}
-        firstIndex !inc
-            | inc>0     = 0
-            | otherwise = (1-n)*inc
+-- O(1) - Compute the starting index of an iterative vector traversal
+-- given the length of the vector and the iterative step size.
+firstIndex :: Int -> Int -- ^ the iterative step
+          -> Int -- ^ The index of the first iterative step
+{-# INLINE firstIndex #-}
+firstIndex !n !inc
+    | inc>0     = 0
+    | otherwise = (1-n)*inc
 
 
 {- | O(n) sasum computes the sum of the absolute value of elements drawn a
@@ -249,3 +251,64 @@ isamax !n sx !incx
                       EQ -> findmax k c (i+1) (ix+incx)
                       LT -> f $ negate xi
                       GT -> f xi
+
+
+{- | O(n) sdot computes the sum of the products of elements drawn from two
+ vectors according to the following specification:
+
+@
+ sdsdot n u incx v incy = sum { u[f incx k] * v[f incy k] | k<=[0..n-1] }
+ where
+ f inc k | inc > 0  = inc * k
+         | inc < 0  = (1-n+k)*inc
+@
+The elements selected from the two vectors are controlled by the parameters
+n, incx and incy.   The parameter n determines the number of summands, while
+the parameters incx and incy determine the spacing between selected elements
+and the direction which the vectors are traversed.  When both incx and incy
+are unity and n is the length of both vectors then
+sdsdot corresponds to the dot product of two vectors.
+
+NOTE: The summation is performed using double precision floating point and the
+result is coerced to a single immediatly prior to returing the value.
+-}
+sdsdot :: Int -> Float -> Vector Float -> Int -> Vector Float -> Int -> Float
+sdsdot n (floatToDouble -> sb) sx !incx sy !incy
+   | n< 1                   = doubleToFloat sb
+   | incx==incy && incx > 0 = whenPositiveEqualInc (n*incx)
+   | otherwise              = whenUnequalOrNegIncs 0 sb (firstIndex n incx) (firstIndex n incy)
+   where
+   whenPositiveEqualInc :: Int -> Float
+   {-# INLINE whenPositiveEqualInc #-}
+   whenPositiveEqualInc !imax = whenPositiveEqualInc_loop 0 sb
+       where
+       whenPositiveEqualInc_loop :: Int -> Double -> Float
+       {-# INLINE whenPositiveEqualInc_loop #-}
+       whenPositiveEqualInc_loop !i !c
+            | i>=imax   = doubleToFloat c
+            | otherwise =
+                let c' = c + (floatToDouble ( sx `V.unsafeIndex` i))
+                           * (floatToDouble ( sy `V.unsafeIndex` i))
+                in whenPositiveEqualInc_loop (i+incx) c'
+   whenUnequalOrNegIncs :: Int -> Double -> Int -> Int -> Float
+   {-# INLINE whenUnequalOrNegIncs #-}
+   whenUnequalOrNegIncs !i !c !kx !ky
+       | i >= n    = doubleToFloat c
+       | otherwise =
+           let c' = c + (floatToDouble $ sx `V.unsafeIndex` kx)
+                      * (floatToDouble $ sy `V.unsafeIndex` ky)
+           in  whenUnequalOrNegIncs (i+1) c' (kx+incx) (ky+incy)
+
+
+--- UTILITIES --
+-- Move these to an appropriate module
+
+floatToDouble :: Float -> Double
+{-# INLINE floatToDouble #-}
+floatToDouble (F# f) = case float2Double# f of
+    d -> D# d
+
+doubleToFloat :: Double -> Float
+{-# INLINE doubleToFloat #-}
+doubleToFloat (D# d) = case double2Float# d of
+    f -> F# f
