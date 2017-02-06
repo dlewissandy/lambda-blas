@@ -17,19 +17,21 @@ import qualified Foreign as FORTRAN
 
 main :: IO ()
 main = do
-    let n = 10001
+    let n = 32767
     u<- generate $ genNVector (genFloat genEveryday) n
     v<- generate $ genNVector (genFloat genEveryday) n
+    let xs = V.toList u
+        ys = V.toList v
     a<- generate $ genFloat genEveryday
-    withArray (V.toList u) $ \ us ->
-       withArray (V.toList v) $ \ vs ->
-        defaultMain [ level1_benchs n a u v us vs ]
+    withArray xs $ \ us ->
+       withArray ys $ \ vs ->
+        defaultMain [ level1_benchs n a u v us vs xs ys ]
 
 -- | Level 1 BLAS benchmarks
 level1_benchs :: Int -> Float -> V.Vector Float -> V.Vector Float
-           -> Ptr Float -> Ptr Float  -> Benchmark
-level1_benchs n a u v us vs = bgroup "level-1"
-    [ sdot_benchs n u v us vs
+           -> Ptr Float -> Ptr Float -> [Float] -> [Float] -> Benchmark
+level1_benchs n a u v us vs xs ys = bgroup "level-1"
+    [ sdot_benchs n u v us vs xs ys
     , sasum_benchs n u us
     , snrm2_benchs n u us
     , isamax_benchs n u us
@@ -38,20 +40,21 @@ level1_benchs n a u v us vs = bgroup "level-1"
 
 -- Benchmarks for the sdot function
 sdot_benchs :: Int -> V.Vector Float -> V.Vector Float
-    -> Ptr Float -> Ptr Float -> Benchmark
-sdot_benchs n u v us vs = bgroup "sdot"
-   [ bench "sdot_zip(u,v)" $ nf naive (u,v)
-   , native 1 1          -- test corner case when both incx and incy are 1
-   , foreign 1 1
-   , native (-1) (-1)    -- test corner case when incx or incy is not equal to 1
-   , foreign (-1) (-1)
+    -> Ptr Float -> Ptr Float -> [Float] -> [Float] -> Benchmark
+sdot_benchs nmax u v us vs xs ys = bgroup "sdot"
+   [ bgroup "list"   [ benchPure sdot_list n xs ys inc | inc<-[-1,1], n<-ns]
+   , bgroup "stream" [ benchPure sdot_stream n u v inc | inc<-[-1,1], n<-ns]
+   , bgroup "sdot"   [ benchPure sdot n u v inc | inc<-[-1,1], n<-ns]
+   , bgroup "unsafe" [ benchIO FORTRAN.sdot_unsafe n inc | inc<-[-1,1], n<-ns]
+   , bgroup "safe"   [ benchIO FORTRAN.sdot n inc | inc<-[-1,1], n<-ns]
    ]
    where
-   naive (a,b) = sdot_zip a b
-   native !incx !incy = bench ("sdot(n,u,"++show incx++",v,"++show incy++")") $
-       nf (\ (a,b,c,d,e) -> sdot a b c d e) (n,u,incx,v,incy)
-   foreign !incx !incy = bench ("FOREIGN.sdot(n,u,"++show incx++",v,"++show incy++")") $
-       nfIO $ FORTRAN.sdot n us incx vs incy
+   ns = let zs = [1..9]++map (*10) zs in takeWhile (<nmax) zs
+   benchPure f !n x y !inc = bench (showTestCase n inc) $
+       nf (\ (a,b,c,d,e) -> f a b c d e ) (n,x,inc,y,inc)
+   benchIO f !n !inc = bench (showTestCase n inc) $
+       nfIO $ f n us inc vs inc
+   showTestCase n inc = "sdot("++show n++",u,"++show inc++",v,"++show inc++")"
 
 -- | benchmarks for the sasum function
 sasum_benchs :: Int -> V.Vector Float -> Ptr Float -> Benchmark

@@ -26,6 +26,9 @@ tests = testGroup "BLAS"
     , genTests "Float"  (1::Float)  -- test the random number generators for IEEE Singles
     , testGroup "Level-1"
         [ dotTest "sdot" sdot (elements [-5..5])
+        , dotTest "sdot_list" (\ n u incx v incy -> sdot_list n (V.toList u) incx (V.toList v) incy) (elements [-5..5])
+        , dotTest "sdot_zip" (\ n u _ v _ -> sdot_zip n u v) (pure (1))
+        , dotTest "sdot_stream" sdot_stream (elements [-5..5])
         , sdsdotTest "sdsdot" sdsdot (elements [-5..5])
         , iviTest "sasum" sasum (Fortran.sasum) (elements [1..5])
         , iviTest "snrm2" snrm2 (Fortran.snrm2) (elements [1..5])
