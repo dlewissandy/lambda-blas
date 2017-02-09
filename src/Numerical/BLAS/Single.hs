@@ -6,6 +6,8 @@
 module Numerical.BLAS.Single(
    isamax,
    sdot_zip,
+   sdot_list,
+   sdot_stream,
    sdot,
    sasum,
    snrm2,
@@ -14,14 +16,115 @@ module Numerical.BLAS.Single(
 
 import Data.Vector.Storable(Vector)
 import qualified Data.Vector.Storable as V
+import Data.Vector.Fusion.Bundle.Size(Size(..))
+import Data.Vector.Fusion.Bundle.Monadic(fromStream)
+import Data.Vector.Fusion.Stream.Monadic(Stream(..),Step(..))
+import Data.Vector.Generic(unstream)
 import GHC.Exts
+import Data.List
 
 {- | O(n) compute the dot product of two vectors using zip and fold
 -}
-sdot_zip :: Vector Float -- ^ The vector u
+sdot_zip :: Int
+    -> Vector Float -- ^ The vector u
     -> Vector Float      -- ^ The vector v
     -> Float             -- ^ The dot product u . v
-sdot_zip u = V.foldl (+) 0 . V.zipWith (*) u
+sdot_zip !n u = V.foldl' (+) 0 . V.unsafeTake n . V.zipWith (*) u
+
+{- | O(n) sdot_list function computes the sum of the products of elements
+   drawn from two vectors according to the following specification:
+
+@
+   sdot n u incx v incy = sum { u[f incx k] * v[f incy k] | k<=[0..n-1] }
+   where
+   f inc k | inc > 0  = inc * k
+           | inc < 0  = (1-n+k)*inc
+@
+
+  The elements selected from the two vectors are controlled by the parameters
+  n, incx and incy.   The parameter n determines the number of summands, while
+  the parameters incx and incy determine the spacing between selected elements
+  and the direction which the vectors are traversed.  When both incx and incy
+  are unity and n is the length of both vectors then sdot corresponds to the dot
+  product of two vectors.
+
+  This function is semantically equivalent to the "sdot" and "sdot_stream"
+  functions, but has been written using build/fold fusion.
+-}
+
+sdot_list :: Int
+    -> [Float] -- ^ The vector u
+    -> Int
+    -> [Float]      -- ^ The vector v
+    -> Int
+    -> Float             -- ^ The dot product u . v
+sdot_list !n u !incx v !incy =
+    case compare incx 0 of
+        GT -> case compare incy 0 of
+            GT -> if incx==1 && incy==1 then foldl' (+) 0 $ take n $ zipWith (*) u v else sumprods
+            _ -> sumprods
+        _ -> sumprods
+    where
+        {-# INLINE sumprods #-}
+        sumprods = foldl' (+) 0 $ getProds
+        {-# INLINE getProds #-}
+        getProds = build (\ c b ->
+            let f inc zs = if inc > 0 then zs else reverse $ take (1+(1-n)*inc) zs
+                aincx = abs incx
+                aincy = abs incy
+                go !i xs ys | i==n = b
+                            | otherwise = let x=head xs
+                                              y=head ys
+                                              xy = x*y
+                                          in  xy `seq` c xy $! go (i+1) (drop aincx xs) (drop aincy ys)
+            in  go 0 (f incx u) (f incy v) )
+
+{- | O(n) sdot_stream function computes the sum of the products of elements
+   drawn from two vectors according to the following specification:
+
+@
+   sdot n u incx v incy = sum { u[f incx k] * v[f incy k] | k<=[0..n-1] }
+   where
+   f inc k | inc > 0  = inc * k
+           | inc < 0  = (1-n+k)*inc
+@
+
+  The elements selected from the two vectors are controlled by the parameters
+  n, incx and incy.   The parameter n determines the number of summands, while
+  the parameters incx and incy determine the spacing between selected elements
+  and the direction which the vectors are traversed.  When both incx and incy
+  are unity and n is the length of both vectors then sdot corresponds to the dot
+  product of two vectors.
+
+  This function is semantically equivalent to the "sdot" and "sdot_list"
+  functions, but has been written using stream fusion to produce efficient,
+  beutiful code.
+-}
+sdot_stream :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float
+sdot_stream !n u !incx v !incy =
+    case compare incx 0 of
+        GT -> case compare incy 0 of
+            GT -> sumprods xs ys
+            LT -> sumprods xs ys'
+            EQ -> V.foldl' (+) 0 $ V.map (* v0) xs
+        LT -> case compare incy 0 of
+            LT -> sumprods xs' ys'
+            GT -> sumprods xs' ys
+            EQ -> V.foldl' (+) 0 $ V.map (* v0) xs'
+        EQ -> case compare incy 0 of
+            LT -> V.foldl' (+) 0 $ V.map (* u0) ys'
+            GT -> V.foldl' (+) 0 $ V.map (* u0) ys
+            EQ -> V.foldl' (+) 0 $ V.replicate n (v0*u0)
+    where
+        {-# INLINE sumprods #-}
+        sumprods x = V.foldl' (+) 0 . V.zipWith (*) x
+        xs  = sample n u incx
+        ys  = sample n v incy
+        xs' = samplerev n u incx
+        ys' = samplerev n v incy
+        v0  = v `V.unsafeIndex` 0
+        u0  = u `V.unsafeIndex` 0
+
 
 {- | O(n) sdot computes the sum of the products of elements drawn from two
    vectors according to the following specification:
@@ -39,6 +142,10 @@ sdot_zip u = V.foldl (+) 0 . V.zipWith (*) u
   and the direction which the vectors are traversed.  When both incx and incy
   are unity and n is the length of both vectors then
   sdot corresponds to the dot product of two vectors.
+
+  This function is semantically equivalent to the "sdot_stream" and "sdot_list"
+  functions, but faithfully implements the loop unrolling strategy used by
+  the FORTRAN implementation.
 -}
 sdot :: Int -- ^ The number of summands
     -> Vector Float -- ^ the vector u
@@ -312,3 +419,36 @@ doubleToFloat :: Double -> Float
 {-# INLINE doubleToFloat #-}
 doubleToFloat (D# d) = case double2Float# d of
     f -> F# f
+
+-- | O(n), downstream fusable.   Sample a vector in even intevals, collecting the
+-- first n elements into a vector according to the following specification:
+--
+-- @
+-- sample n u inc = fromList [ u!(i*incx) | i<-[0..n-1]]
+-- @
+-- The vector must have at least (n-1)*inc elements in it.  This condition is
+-- not checked, and must be verified by the calling program
+sample :: Int -> V.Vector Float -> Int -> V.Vector Float
+{-# INLINE sample #-}
+sample !n u !inc = unstream $ fromStream (Stream go 0) (Exact n)
+    where
+    go !ix
+       | ix > imax = return Done
+       | otherwise = return $ Yield (u `V.unsafeIndex` ix) (ix+inc)
+    imax = (n-1)*inc
+
+-- | O(n), downstream fusable.   Sample a vector in even intevals, collecting the
+-- first n elements into a vector according to the following specification:
+--
+-- @
+-- sample n u inc = fromList $ reverse [ u!(i*incx) | i<-[0..n-1]]
+-- @
+-- The vector must have at least (n-1)*inc elements in it.  This condition is
+-- not checked, and must be verified by the calling program
+samplerev :: Int -> V.Vector Float -> Int -> V.Vector Float
+{-# INLINE samplerev #-}
+samplerev !n u !inc = unstream $ fromStream (Stream go ((1-n)*inc)) (Exact n)
+    where
+    go !ix
+       | ix < 0    = return Done
+       | otherwise = return $ Yield (u `V.unsafeIndex` ix) (ix+inc)

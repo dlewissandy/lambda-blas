@@ -8,6 +8,7 @@ module Foreign(
 --    scopy,
     sdsdot,
     sdot,
+    sdot_unsafe,
     snrm2,
 --    srot,
 --    srotg,
@@ -27,6 +28,7 @@ foreign import ccall "sasum_"  sasum_foreign  :: Ptr Int -> Ptr Float -> Ptr Int
 --foreign import ccall "scnrm2_" scnrm2_foreign :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 --foreign import ccall "scopy_"  scopy_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
 foreign import ccall "sdot_"   sdot_foreign   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
+foreign import ccall unsafe "sdot_"   sdot_unsafe_ :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall "sdsdot_" sdsdot_foreign :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall "snrm2_"   snrm2_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 --foreign import ccall "srot_"   srot_foreign   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Float -> IO ()
@@ -46,6 +48,9 @@ sdot :: Int       -- The number of summands
     -> Int        -- The increment to use when traversing y
     -> IO Float   -- The sum of the elementwise products of x and y.
 sdot = iviivi_foreign sdot_foreign
+
+sdot_unsafe :: Int -> Ptr Float -> Int -> Ptr Float -> Int -> IO Float
+sdot_unsafe = iviivi_foreign sdot_unsafe_
 
 -- | Call the FORTRAN implementation of the sasum function.   For details
 -- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
