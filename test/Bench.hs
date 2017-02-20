@@ -42,11 +42,12 @@ level1_benchs n a u v us vs xs ys = bgroup "level-1"
 sdot_benchs :: Int -> V.Vector Float -> V.Vector Float
     -> Ptr Float -> Ptr Float -> [Float] -> [Float] -> Benchmark
 sdot_benchs nmax u v us vs xs ys = bgroup "sdot"
-   [ bgroup "list"   [ benchPure sdot_list n xs ys inc | inc<-[-1,1], n<-ns]
-   , bgroup "stream" [ benchPure sdot_stream n u v inc | inc<-[-1,1], n<-ns]
-   , bgroup "sdot"   [ benchPure sdot n u v inc | inc<-[-1,1], n<-ns]
-   , bgroup "unsafe" [ benchIO FORTRAN.sdot_unsafe n inc | inc<-[-1,1], n<-ns]
-   , bgroup "safe"   [ benchIO FORTRAN.sdot n inc | inc<-[-1,1], n<-ns]
+   [ bgroup "list"   [ benchPure sdot_list n xs ys inc | inc<-[1,-1], n<-ns]
+   , bgroup "list"   [ benchPure sdot_list n xs ys inc | inc<-[-100..100], n<-[100]]
+   , bgroup "stream" [ benchPure sdot_stream n u v inc | inc<-[1,-1], n<-ns]
+   , bgroup "sdot"   [ benchPure sdot n u v inc | inc<-[1,-1], n<-ns]
+   , bgroup "unsafe" [ benchIO FORTRAN.sdot_unsafe n inc | inc<-[1,-1], n<-ns]
+   , bgroup "safe"   [ benchIO FORTRAN.sdot n inc | inc<-[1,-1], n<-ns]
    ]
    where
    ns = let zs = [1..9]++map (*10) zs in takeWhile (<nmax) zs
