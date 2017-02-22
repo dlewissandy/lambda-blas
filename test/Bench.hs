@@ -59,63 +59,61 @@ sdot_benchs nmax u v us vs xs ys = bgroup "sdot"
 
 -- | benchmarks for the sasum function
 sasum_benchs :: Int -> V.Vector Float -> Ptr Float -> Benchmark
-sasum_benchs n u us = bgroup "sasum"
-  [ native 0    -- test corner case when incx < 1
-  , foreign 0
-  , native 1    -- test corner case when incx = 1
-  , foreign 1
-  , native 2    -- test corner case when incx >1
-  , foreign 2
+sasum_benchs nmax u us = bgroup "sasum"
+  [ bgroup "stream"   [ benchPure sasum n u inc | inc<-[1,-1], n<-ns]
+  , bgroup "unsafe"   [ benchIO FORTRAN.sasum_unsafe n inc | inc<-[1,-1], n<-ns]
+  , bgroup "safe"     [ benchIO FORTRAN.sasum n inc | inc<-[1,-1], n<-ns]
   ]
   where
-  native !incx = bench ("sasum(n,u,"++show incx++")") $
-      nf (\ (a,b,c) -> sasum a b c) (n,u,incx)
-  foreign !incx = bench ("FOREIGN.sasum(n,u,"++show incx++")") $
-      nfIO $ FORTRAN.sasum n us incx
+   ns = let zs = [1..9]++map (*10) zs in takeWhile (<nmax) zs
+   benchPure f !n x !inc = bench (showTestCase n inc) $
+       nf (\ (a,b,c) -> f a b c ) (n,x,inc)
+   benchIO f !n !inc = bench (showTestCase n inc) $
+       nfIO $ f n us inc
+   showTestCase n inc = "sasum("++show n++",u,"++show inc++")"
 
 -- | benchmarks for the snrm2 function
 snrm2_benchs :: Int -> V.Vector Float -> Ptr Float -> Benchmark
-snrm2_benchs n u us = bgroup "snrm2"
-    [ native 0    -- test corner case when incx < 1
-    , foreign 0
-    , native 1    -- test corner case when incx = 1
-    , foreign 1
-    , native 2    -- test corner case when incx >1
-    , foreign 2
-    ]
-    where
-    native !incx = bench ("srnm2(n,u,"++show incx++")") $
-        nf (\ (a,b,c) -> snrm2 a b c) (n,u,incx)
-    foreign !incx = bench ("FOREIGN.snrm2(n,u,"++show incx++")") $
-        nfIO $ FORTRAN.snrm2 n us incx
+snrm2_benchs nmax u us = bgroup "snrm2"
+  [ bgroup "stream"   [ benchPure snrm2 n u inc | inc<-[1,-1], n<-ns]
+  , bgroup "unsafe"   [ benchIO FORTRAN.snrm2_unsafe n inc | inc<-[1,-1], n<-ns]
+  , bgroup "safe"     [ benchIO FORTRAN.snrm2 n inc | inc<-[1,-1], n<-ns]
+  ]
+  where
+   ns = let zs = [1..9]++map (*10) zs in takeWhile (<nmax) zs
+   benchPure f !n x !inc = bench (showTestCase n inc) $
+       nf (\ (a,b,c) -> f a b c ) (n,x,inc)
+   benchIO f !n !inc = bench (showTestCase n inc) $
+       nfIO $ f n us inc
+   showTestCase n inc = "snrm2("++show n++",u,"++show inc++")"
 
 -- | benchmarks for the isamax function
 isamax_benchs :: Int -> V.Vector Float -> Ptr Float -> Benchmark
-isamax_benchs n u us = bgroup "isamax"
-    [ native 0    -- test corner case when incx < 1
-    , foreign 0
-    , native 1    -- test corner case when incx = 1
-    , foreign 1
-    , native 2    -- test corner case when incx >1
-    , foreign 2
-    ]
-    where
-    native !incx = bench ("isamax(n,u,"++show incx++")") $
-        nf (\ (a,b,c) -> isamax a b c) (n,u,incx)
-    foreign !incx = bench ("FOREIGN.isamax(n,u,"++show incx++")") $
-        nfIO $ FORTRAN.isamax n us incx
+isamax_benchs nmax u us = bgroup "isamax"
+  [ bgroup "stream"   [ benchPure isamax n u inc | inc<-[1,-1], n<-ns]
+  , bgroup "unsafe"   [ benchIO FORTRAN.isamax_unsafe n inc | inc<-[1,-1], n<-ns]
+  , bgroup "safe"     [ benchIO FORTRAN.isamax n inc | inc<-[1,-1], n<-ns]
+  ]
+  where
+   ns = let zs = [1..9]++map (*10) zs in takeWhile (<nmax) zs
+   benchPure f !n x !inc = bench (showTestCase n inc) $
+       nf (\ (a,b,c) -> f a b c ) (n,x,inc)
+   benchIO f !n !inc = bench (showTestCase n inc) $
+       nfIO $ f n us inc
+   showTestCase n inc = "isamax("++show n++",u,"++show inc++")"
 
 -- Benchmarks for the sdsdot function
 sdsdot_benchs :: Int -> Float -> V.Vector Float -> V.Vector Float
     -> Ptr Float -> Ptr Float -> Benchmark
-sdsdot_benchs n a u v us vs = bgroup "sdsdot"
-   [ native 1 1          -- test corner case when both incx and incy are 1
-   , foreign 1 1
-   , native (-1) (-1)    -- test corner case when incx and incy are not equal or are negative
-   , foreign (-1) (-1)
+sdsdot_benchs nmax a u v us vs = bgroup "sdsdot"
+   [ bgroup "stream"   [ benchPure sdsdot n a u v inc | inc<-[1,-1], n<-ns]
+   , bgroup "unsafe"   [ benchIO FORTRAN.sdsdot_unsafe n inc | inc<-[1,-1], n<-ns]
+   , bgroup "safe"     [ benchIO FORTRAN.sdsdot n inc | inc<-[1,-1], n<-ns]
    ]
    where
-   native !incx !incy = bench ("sdsdot(n,aa,u,"++show incx++",v,"++show incy++")") $
-       nf (\ (aa,b,c,d,e,f) -> sdsdot aa b c d e f) (n,a,u,incx,v,incy)
-   foreign !incx !incy = bench ("FOREIGN.sdsdot(n,a,u,"++show incx++",v,"++show incy++")") $
-       nfIO $ FORTRAN.sdsdot n a us incx vs incy
+   ns = let zs = [1..9]++map (*10) zs in takeWhile (<nmax) zs
+   benchPure f !n !sb x y !inc = bench (showTestCase n inc) $
+       nf (\ (aa,b,c,d,e,g) -> f aa b c d e g) (n,sb,x,inc,y,inc)
+   benchIO f !n !inc = bench (showTestCase n inc) $
+       nfIO $ f n a us inc vs inc
+   showTestCase n inc = "sdsdot("++show n++",a,u,"++show inc++",v,"++show inc++")"

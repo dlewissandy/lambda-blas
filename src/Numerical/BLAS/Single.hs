@@ -54,10 +54,10 @@ sdot_zip !n u = V.foldl' (+) 0 . V.unsafeTake n . V.zipWith (*) u
 
 sdot_list :: Int
     -> [Float] -- ^ The vector u
-    -> Int     -- ^ The increment for u
-    -> [Float] -- ^ The vector v
-    -> Int     -- ^ The increment for v
-    -> Float   -- ^ The sum of products from u and v
+    -> Int
+    -> [Float]      -- ^ The vector v
+    -> Int
+    -> Float             -- ^ The dot product u . v
 sdot_list !n u !incx v !incy =
     case compare incx 0 of
         GT -> case compare incy 0 of
@@ -65,7 +65,7 @@ sdot_list !n u !incx v !incy =
                     then foldl' (+) 0 $ take n $ zipWith (*) u v
                     else foldl' (+) 0 $ getProds u v
             LT -> foldl' (+) 0 $ getProds u vs'
-            _  -> foldl' (+) 0 $ getProds u (replicate n v0)
+            _ -> foldl' (+) 0 $ getProds u (replicate n v0)
         LT -> case compare incy 0 of
             LT -> if (incx*incy==1)
                     then foldr (+) 0 $ take n $ zipWith (*) u v
@@ -73,7 +73,7 @@ sdot_list !n u !incx v !incy =
             GT -> foldl' (+) 0 $ getProds us' v
             _  -> foldl' (+) 0 $ getProds us' (replicate n v0)
         _ -> case compare incy 0 of
-            LT -> foldr  (+) 0 $ getProds (replicate n u0) v
+            LT -> foldr (+) 0 $ getProds (replicate n u0) v
             GT -> foldl' (+) 0 $ getProds (replicate n u0) v
             EQ -> foldl' (+) 0 $ replicate n (u0*v0)
     where
@@ -84,15 +84,15 @@ sdot_list !n u !incx v !incy =
         us'= reverse $ take (1+(n-1)*aincx) u
         vs'= reverse $ take (1+(n-1)*aincy) v
         {-# INLINE getProds #-}
-        getProds xx yy = build ( \ c b ->
-           let go xs ys !i = case xs of
-                [] -> b
-                (x:_) -> case ys of
-                    [] -> b
-                    (y:_) -> case i of
-                        0 -> b
-                        _ -> c (x*y) $! go (drop aincx xs) (drop aincy ys) (i-1)
-           in go xx yy n)
+        getProds xx yy = build (\ c b ->
+            let go !i xs ys
+                    | i==n = b
+                    | otherwise =
+                        let x=head xs
+                            y=head ys
+                            xy = x*y
+                        in  c xy $! go (i+1) (drop aincx xs) (drop aincy ys)
+            in  go 0 xx yy)
 
 {- | O(n) sdot_stream function computes the sum of the products of elements
    drawn from two vectors according to the following specification:
