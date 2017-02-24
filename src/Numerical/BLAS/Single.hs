@@ -471,7 +471,16 @@ samplerev !n u !inc = unstream $ fromStream (Stream go ((1-n)*inc)) (Exact n)
        | ix < 0    = return Done
        | otherwise = return $ Yield (u `V.unsafeIndex` ix) (ix+inc)
 
--- | O(1) Construct a plane givens rotation.
+{- | O(1) Construct a plane Givens rotation on a deconstructed two-vector.
+Specifically:
+
+@
+srotg sa sb = ( r, secant(theta), cos(theta), sin(theta))
+@
+
+where r is the signed magnitude of the vector <sa,sb>.   In the case when r
+is zero, srotg returns (0,0,1,0).
+-}
 srotg :: Float -> Float -> GivensRot Float
 srotg sa sb =
     case scale of

@@ -89,6 +89,9 @@ sdsdotTest testname func genInc = testProperty testname $
           let observed = func n a u incx v incy
           runTest expected observed
 
+-- | Evidence that the native srotg function is byte equivalent to the BLAS
+-- implementation.  Parameter values that are in the range of approximately
+-- +/-(epsilon/2,2/epsilon) are tested.
 srotgTest :: String -> (Float -> Float -> GivensRot Float ) -> TestTree
 srotgTest testname func = testProperty testname $
    forAll genNiceFloat $ \ sa ->
