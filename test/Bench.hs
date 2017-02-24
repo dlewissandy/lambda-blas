@@ -36,6 +36,7 @@ level1_benchs n a u v us vs xs ys = bgroup "level-1"
     , snrm2_benchs n u us
     , isamax_benchs n u us
     , sdsdot_benchs n a u v us vs
+    , srotg_benchs (V.head u) (V.head v)
     ]
 
 -- Benchmarks for the sdot function
@@ -117,3 +118,17 @@ sdsdot_benchs nmax a u v us vs = bgroup "sdsdot"
    benchIO f !n !inc = bench (showTestCase n inc) $
        nfIO $ f n a us inc vs inc
    showTestCase n inc = "sdsdot("++show n++",a,u,"++show inc++",v,"++show inc++")"
+
+-- | benchmarks for the isamax function
+srotg_benchs :: Float -> Float -> Benchmark
+srotg_benchs !sa !sb = bgroup "srotg"
+  [ bgroup "haskell"  [ benchPure srotg sa sb]
+  , bgroup "unsafe"   [ benchIO FORTRAN.srotg_unsafe ]
+  , bgroup "safe"     [ benchIO FORTRAN.srotg ]
+  ]
+  where
+   benchPure f a b = bench showTestCase $
+       nf (uncurry f) (a,b)
+   benchIO f = bench (showTestCase) $
+       nfIO $ f sa sb
+   showTestCase  = "srotg(sa,sb)"

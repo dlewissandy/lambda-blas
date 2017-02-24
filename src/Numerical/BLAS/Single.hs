@@ -12,7 +12,10 @@ module Numerical.BLAS.Single(
    sasum,
    snrm2,
    sdsdot,
+   srotg,
     ) where
+
+import Numerical.BLAS.Types
 
 import Data.Vector.Storable(Vector)
 import qualified Data.Vector.Storable as V
@@ -467,3 +470,23 @@ samplerev !n u !inc = unstream $ fromStream (Stream go ((1-n)*inc)) (Exact n)
     go !ix
        | ix < 0    = return Done
        | otherwise = return $ Yield (u `V.unsafeIndex` ix) (ix+inc)
+
+-- | O(1) Construct a plane givens rotation.
+srotg :: Float -> Float -> GivensRot Float
+srotg sa sb =
+    case scale of
+        0.0 -> GIVENSROT (0,0,1,0)
+        _ -> case asa>asb of
+            True -> let r = (signum sa) * magnitude
+                        s = sb/r
+                    in  GIVENSROT (r,s,sa/r,s)
+            False-> let r = (signum sb) * magnitude
+                        c = sa/r
+                    in  case c of
+                           0.0 -> GIVENSROT (r,1,0,1)
+                           _   -> GIVENSROT (r,1/c,c,sb/r)
+    where
+        asa = abs sa
+        asb = abs sb
+        scale = asa + asb
+        magnitude = scale * sqrt((sa/scale)^(2::Int)+(sb/scale)^(2::Int))
