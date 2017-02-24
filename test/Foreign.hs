@@ -15,13 +15,14 @@ module Foreign(
     srotg_unsafe,
 --    srotm,
     srotmg,srotmg_unsafe,
---    sscal,
+    sscal,sscal_unsafe,
 --    sswap,
     ) where
 
 import Numerical.BLAS.Types
 
 import Foreign.Ptr
+import Foreigin.ForeginPtr
 import Foreign.Marshal.Alloc
 import Foreign.Marshal.Array
 import Foreign.Storable
@@ -46,7 +47,8 @@ foreign import ccall unsafe "srotg_" srotg_unsafe_ :: Ptr Float -> Ptr Float -> 
 --foreign import ccall "srotm_"  srotm_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> IO ()
 foreign import ccall        "srotmg_" srotmg_foreign :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
 foreign import ccall unsafe "srotmg_" srotmg_unsafe_ :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
---foreign import ccall "sscal_"  sscal_foreign  :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> IO ()
+foreign import ccall        "sscal_"  sscal_foreign  :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> IO ()
+foreign import ccall unsafe "sscal_"  sscal_unsafe_  :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> IO ()
 --foreign import ccall "sswap_"  sswap_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
 
 
@@ -137,6 +139,25 @@ modGivensHelper f sd1 sd2 sx1 sy1 =
             0.0  -> FLAG0 {..}
             1.0  -> FLAG1 {..}
             _    -> error "unexpected parameter value returned from srotmg"
+
+-- | Call the FORTRAN implementation of the isamax function.   For details
+-- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
+sscal :: Int -> Float -> Ptr Float -> Int -> IO ()
+sscal = ivi_foreign isamax_foreign
+sscal_unsafe :: Int -> Float -> Ptr Float -> Int -> IO ()
+sscal_unsafe = ivi_foreign isamax_unsafe_
+scal_helper :: Storable a => (Ptr Int -> Ptr a -> Ptr a -> Ptr Int -> IO ()
+    -> Int -> Float -> Ptr a -> IO (V.Vector a)
+scal_helper n sa sx incx = do
+    alloca $ \ pa ->
+    alloca $ \ pn ->
+    alloca $ \ pincx ->
+    mallocForeignPtrArray n $ \ fptr
+
+        poke pa sa
+        poke pn n
+        poke pincx incx
+        a
 
 -- =============================================================================
 -- HELPER FUNCTIONS
