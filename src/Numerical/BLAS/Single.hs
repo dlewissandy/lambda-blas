@@ -247,7 +247,7 @@ sscal n a u incx =
        True -> u
        False -> case compare incx 1 of
            LT -> u
-           EQ -> V.map (*a) u
+           EQ -> let (l,r) = V.splitAt n u in V.map (*a) l V.++ r
            GT -> V.unsafeUpdate_ u (sampleIndexes n incx) (V.map (*a) $ sample n u incx)
 
 {- | O(n) sasum computes the sum of the absolute value of elements drawn a
