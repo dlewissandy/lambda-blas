@@ -20,9 +20,10 @@ module Foreign(
     ) where
 
 import Numerical.BLAS.Types
+import qualified Data.Vector.Storable as V
+import Data.Vector.Storable.Internal
 
 import Foreign.Ptr
-import Foreigin.ForeginPtr
 import Foreign.Marshal.Alloc
 import Foreign.Marshal.Array
 import Foreign.Storable
@@ -142,22 +143,22 @@ modGivensHelper f sd1 sd2 sx1 sy1 =
 
 -- | Call the FORTRAN implementation of the isamax function.   For details
 -- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
-sscal :: Int -> Float -> Ptr Float -> Int -> IO ()
-sscal = ivi_foreign isamax_foreign
-sscal_unsafe :: Int -> Float -> Ptr Float -> Int -> IO ()
-sscal_unsafe = ivi_foreign isamax_unsafe_
-scal_helper :: Storable a => (Ptr Int -> Ptr a -> Ptr a -> Ptr Int -> IO ()
-    -> Int -> Float -> Ptr a -> IO (V.Vector a)
-scal_helper n sa sx incx = do
+sscal :: Int -> Float -> V.Vector Float -> Int -> IO (V.Vector Float)
+sscal = scal_helper sscal_foreign
+sscal_unsafe :: Int -> Float -> V.Vector Float -> Int -> IO (V.Vector Float)
+sscal_unsafe = scal_helper sscal_unsafe_
+scal_helper :: Storable a => (Ptr Int -> Ptr a -> Ptr a -> Ptr Int -> IO ())
+    -> Int -> a -> V.Vector a -> Int -> IO (V.Vector a)
+scal_helper f n sa sx incx =
     alloca $ \ pa ->
     alloca $ \ pn ->
-    alloca $ \ pincx ->
-    mallocForeignPtrArray n $ \ fptr
-
+    alloca $ \ pincx -> do
+        V.MVector z fptr <- V.thaw sx
         poke pa sa
         poke pn n
         poke pincx incx
-        a
+        f pn pa (getPtr fptr) pincx
+        V.unsafeFreeze $ V.MVector z fptr
 
 -- =============================================================================
 -- HELPER FUNCTIONS

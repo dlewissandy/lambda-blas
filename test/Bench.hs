@@ -38,6 +38,7 @@ level1_benchs n a u v us vs xs ys = bgroup "level-1"
     , sdsdot_benchs n a u v us vs
     , srotg_benchs (V.head u) (V.head v)
     , srotmg_benchs a (V.unsafeIndex u 0) (V.unsafeIndex u 1) (V.unsafeIndex u 2)
+    , sscal_benchs n a u
     ]
 
 -- Benchmarks for the sdot function
@@ -73,6 +74,23 @@ sasum_benchs nmax u us = bgroup "sasum"
    benchIO f !n !inc = bench (showTestCase n inc) $
        nfIO $ f n us inc
    showTestCase n inc = "sasum("++show n++",u,"++show inc++")"
+
+-- | benchmarks for the sscal function
+sscal_benchs :: Int -> Float -> V.Vector Float -> Benchmark
+sscal_benchs nmax !a u = bgroup "sscal"
+  [ bgroup "stream"   [ benchPure sscal n inc | (n,inc)<-cs]
+  , bgroup "unsafe"   [ benchIO FORTRAN.sscal_unsafe n inc | (n,inc)<-cs]
+  , bgroup "safe"     [ benchIO FORTRAN.sscal n inc | (n,inc)<-cs]
+  ]
+  where
+   ns = let zs = [1..9]++map (*10) zs in takeWhile (<nmax) zs
+   cs = [ (n,inc) | inc<-[1,10,100],n<-ns,(n-1)*inc<nmax]
+   benchPure f !n !inc = bench (showTestCase n inc) $
+          nf (\ (aa,b,c,d) -> f aa b c d) (n,a,V.take (1+(n-1)*inc) u,inc)
+   benchIO f !n !inc = bench (showTestCase n inc) $
+       nfIO $ f n a (V.take (1+(n-1)*inc) u) inc
+   showTestCase n inc = "sscal("++show n++",a,u,"++show inc++")"
+
 
 -- | benchmarks for the snrm2 function
 snrm2_benchs :: Int -> V.Vector Float -> Ptr Float -> Benchmark
