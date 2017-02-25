@@ -10,16 +10,20 @@ module Foreign(
     sdot,sdot_unsafe,
     snrm2,snrm2_unsafe,
 --    srot,
---    srotg,
+    srotg,
+    srotg_unsafe,
 --    srotm,
 --    srotmg,
 --    sscal,
 --    sswap,
     ) where
 
+import Numerical.BLAS.Types
+
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
 import Foreign.Storable
+
 
 foreign import ccall "isamax_" isamax_foreign :: Ptr Int -> Ptr Float -> Ptr Int -> IO Int
 foreign import ccall unsafe "isamax_" isamax_unsafe_ :: Ptr Int -> Ptr Float -> Ptr Int -> IO Int
@@ -30,12 +34,13 @@ foreign import ccall unsafe "sasum_" sasum_unsafe_  :: Ptr Int -> Ptr Float -> P
 --foreign import ccall "scopy_"  scopy_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
 foreign import ccall "sdot_"   sdot_foreign   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall unsafe "sdot_"   sdot_unsafe_ :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
-foreign import ccall "sdsdot_" sdsdot_foreign :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
+foreign import ccall        "sdsdot_" sdsdot_foreign :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall unsafe "sdsdot_" sdsdot_unsafe_ :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall "snrm2_"   snrm2_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall unsafe "snrm2_"  snrm2_unsafe_  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 --foreign import ccall "srot_"   srot_foreign   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Float -> IO ()
---foreign import ccall "srotg_"  srotg_foreign  :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
+foreign import ccall "srotg_"  srotg_foreign  :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
+foreign import ccall unsafe "srotg_" srotg_unsafe_ :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
 --foreign import ccall "srotm_"  srotm_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> IO ()
 --foreign import ccall "srotmg_" srotmg_foreign :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
 --foreign import ccall "sscal_"  sscal_foreign  :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> IO ()
@@ -93,6 +98,12 @@ sdsdot_unsafe n a px incx py incy =
         iviivi_foreign (\ pn _ pincx _ pincy ->
             sdsdot_unsafe_ pn pa px pincx py pincy ) n px incx py incy
 
+-- Setup a Givens rotation.
+-- please see <http://www.netlib.org/lapack/explore-html/df/d28/group__single__blas__level1_ga2f65d66137ddaeb7ae93fcc4902de3fc.html#ga2f65d66137ddaeb7ae93fcc4902de3fc>
+srotg :: Float -> Float -> IO (GivensRot Float)
+srotg sa sb         = ffgivens_foreign srotg_foreign sa sb
+srotg_unsafe :: Float -> Float -> IO (GivensRot Float)
+srotg_unsafe sa sb  = ffgivens_foreign srotg_unsafe_ sa sb
 
 -- =============================================================================
 -- HELPER FUNCTIONS
@@ -130,3 +141,22 @@ iviivi_foreign f n px incx py incy =
         poke pincx incx
         poke pincy incy
         f pn px pincx py pincy
+
+-- a helper function for marshaling functions of the type of the first argument
+ffgivens_foreign :: (Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ())
+    -> Float
+    -> Float
+    -> IO (GivensRot Float)
+ffgivens_foreign f sa sb =
+    alloca $ \ psa ->
+    alloca $ \ psb ->
+    alloca $ \ pc ->
+    alloca $ \ ps -> do
+        poke psa sa
+        poke psb sb
+        f psa psb pc ps
+        a <- peek psa
+        b <- peek psb
+        c <- peek pc
+        s <- peek ps
+        return $ GIVENSROT (a,b,c,s)

@@ -11,6 +11,7 @@ import Test.Tasty.QuickCheck
 import Test.Tasty.HUnit
 -- | This package
 import Numerical.BLAS.Single
+import Numerical.BLAS.Types
 -- | This test suite
 import Gen
 import qualified Foreign as Fortran
@@ -30,6 +31,7 @@ tests = testGroup "BLAS"
         , dotTest "sdot_zip" (\ n u _ v _ -> sdot_zip n u v) (pure (1))
         , dotTest "sdot_stream" sdot_stream (elements [-5..5])
         , sdsdotTest "sdsdot" sdsdot (elements [-5..5])
+        , srotgTest "srotg" srotg
         , iviTest "sasum" sasum (Fortran.sasum) (elements [1..5])
         , iviTest "snrm2" snrm2 (Fortran.snrm2) (elements [1..5])
         , iviTest "isamax" (\ n u incx -> succ $ isamax n u incx ) (Fortran.isamax) (elements [1..5])
@@ -86,6 +88,21 @@ sdsdotTest testname func genInc = testProperty testname $
           expected <- Fortran.sdsdot n a us incx vs incy
           let observed = func n a u incx v incy
           runTest expected observed
+
+-- | Evidence that the native srotg function is byte equivalent to the BLAS
+-- implementation.  Parameter values that are in the range of approximately
+-- +/-(epsilon/2,2/epsilon) are tested.
+srotgTest :: String -> (Float -> Float -> GivensRot Float ) -> TestTree
+srotgTest testname func = testProperty testname $
+   forAll genNiceFloat $ \ sa ->
+   forAll genNiceFloat $ \ sb ->
+      -- monadically marshal the vectors into arrays for use with CBLAS
+      ioProperty $ do
+          -- compute the expected and observed values
+          expected <- Fortran.srotg sa sb
+          let observed = func sa sb
+          runTest expected observed
+
 
 -- | Evidence that the native a native haskell function and a FOTRAN function
 -- of the types
