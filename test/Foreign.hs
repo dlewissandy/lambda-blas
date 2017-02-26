@@ -1,6 +1,7 @@
 -- | This module defines the Foreign function calls to CBLAS library.  For
 -- full documentation consult <http://www.netlib.org/blas/>.
 {-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE RecordWildCards #-}
 module Foreign(
     isamax,isamax_unsafe,
     sasum,sasum_unsafe,
@@ -13,7 +14,7 @@ module Foreign(
     srotg,
     srotg_unsafe,
 --    srotm,
---    srotmg,
+    srotmg,srotmg_unsafe,
 --    sscal,
 --    sswap,
     ) where
@@ -22,6 +23,7 @@ import Numerical.BLAS.Types
 
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
+import Foreign.Marshal.Array
 import Foreign.Storable
 
 
@@ -42,7 +44,8 @@ foreign import ccall unsafe "snrm2_"  snrm2_unsafe_  :: Ptr Int -> Ptr Float -> 
 foreign import ccall "srotg_"  srotg_foreign  :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
 foreign import ccall unsafe "srotg_" srotg_unsafe_ :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
 --foreign import ccall "srotm_"  srotm_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> IO ()
---foreign import ccall "srotmg_" srotmg_foreign :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
+foreign import ccall        "srotmg_" srotmg_foreign :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
+foreign import ccall unsafe "srotmg_" srotmg_unsafe_ :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
 --foreign import ccall "sscal_"  sscal_foreign  :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> IO ()
 --foreign import ccall "sswap_"  sswap_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
 
@@ -104,6 +107,31 @@ srotg :: Float -> Float -> IO (GivensRot Float)
 srotg sa sb         = ffgivens_foreign srotg_foreign sa sb
 srotg_unsafe :: Float -> Float -> IO (GivensRot Float)
 srotg_unsafe sa sb  = ffgivens_foreign srotg_unsafe_ sa sb
+
+-- Setup a modified Givens rotation.
+-- please see <http://www.netlib.org/lapack/explore-html/df/d28/group__single__blas__level1_ga2f65d66137ddaeb7ae93fcc4902de3fc.html#ga2f65d66137ddaeb7ae93fcc4902de3fc>
+srotmg :: Float -> Float -> Float -> Float -> IO (ModGivensRot Float)
+srotmg sd1 sd2 sx1 sy1 = modGivensHelper srotmg_foreign sd1 sd2 sx1 sy1
+srotmg_unsafe :: Float -> Float -> Float -> Float -> IO (ModGivensRot Float)
+srotmg_unsafe sd1 sd2 sx1 sy1 = modGivensHelper srotmg_unsafe_ sd1 sd2 sx1 sy1
+modGivensHelper :: (Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ())
+   -> Float -> Float -> Float -> Float -> IO (ModGivensRot Float)
+modGivensHelper f sd1 sd2 sx1 sy1 =
+    alloca $ \ psd1 ->
+    alloca $ \ psd2 ->
+    alloca $ \ psx1 ->
+    alloca $ \ psy1 ->
+    allocaArray 5 $ \ pparms -> do
+        poke psd1 sd1
+        poke psd2 sd2
+        poke psx1 sx1
+        poke psy1 sy1
+        f psd1 psd2 psx1 psy1 pparms
+        d1<-peek psd1
+        d2<-peek psd2
+        x1<-peek psx1
+        [flag,h11,h21,h12,h22] <- peekArray 5 pparms
+        return $ MODGIVENSROT { .. }
 
 -- =============================================================================
 -- HELPER FUNCTIONS
