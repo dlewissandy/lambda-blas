@@ -131,7 +131,12 @@ modGivensHelper f sd1 sd2 sx1 sy1 =
         d2<-peek psd2
         x1<-peek psx1
         [flag,h11,h21,h12,h22] <- peekArray 5 pparms
-        return $ MODGIVENSROT { .. }
+        return $ case flag of
+            -2.0 -> FLAGNEG2
+            -1.0 -> FLAGNEG1 {..}
+            0.0  -> FLAG0 {..}
+            1.0  -> FLAG1 {..}
+            _    -> error "unexpected parameter value returned from srotmg"
 
 -- =============================================================================
 -- HELPER FUNCTIONS

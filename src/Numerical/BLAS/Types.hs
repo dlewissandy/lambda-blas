@@ -13,6 +13,9 @@ instance (NFData a)=>NFData (GivensRot a)
 -- the elements of the linear operator.   The four cases correspond two
 -- the value of the SFLAG.
 data ModGivensRot a
-   = MODGIVENSROT { flag, d1, d2, x1, h11, h12, h21, h22 :: !a }
+   = FLAGNEG2
+   | FLAGNEG1 { d1,d2,x1,h11, h12, h21, h22 :: !a }
+   | FLAG0 { d1,d2,x1,h12, h21 :: !a }
+   | FLAG1 { d1,d2,x1,h11, h22 :: !a }
    deriving (Eq,Show,Generic)
 instance (NFData a)=>NFData (ModGivensRot a)
