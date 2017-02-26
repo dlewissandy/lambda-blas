@@ -37,6 +37,7 @@ level1_benchs n a u v us vs xs ys = bgroup "level-1"
     , isamax_benchs n u us
     , sdsdot_benchs n a u v us vs
     , srotg_benchs (V.head u) (V.head v)
+    , srotmg_benchs a (V.unsafeIndex u 0) (V.unsafeIndex u 1) (V.unsafeIndex u 2)
     ]
 
 -- Benchmarks for the sdot function
@@ -132,3 +133,17 @@ srotg_benchs !sa !sb = bgroup "srotg"
    benchIO f = bench (showTestCase) $
        nfIO $ f sa sb
    showTestCase  = "srotg(sa,sb)"
+
+-- | benchmarks for the srotmg function
+srotmg_benchs :: Float -> Float -> Float -> Float -> Benchmark
+srotmg_benchs !sd1 !sd2 !sx1 !sy1 = bgroup "srotmg"
+  [ -- bgroup "haskell"  [ benchPure srotg sa sb]
+  bgroup "unsafe"   [ benchIO FORTRAN.srotmg_unsafe ]
+  , bgroup "safe"     [ benchIO FORTRAN.srotmg ]
+  ]
+  where
+   {-benchPure f a b = bench showTestCase $
+       nf (uncurry f) (a,b) -}
+   benchIO f = bench (showTestCase) $
+       nfIO $ f sd1 sd2 sx1 sy1
+   showTestCase  = "srotmg(sd1,sd2,sx1,sx2)"
