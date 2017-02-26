@@ -16,6 +16,7 @@ module Numerical.BLAS.Single(
    srotg,
    srotmg,
    sscal,
+   scopy,
     ) where
 
 import Numerical.BLAS.Types
@@ -249,6 +250,75 @@ sscal n a u incx =
            LT -> u
            EQ -> let (l,r) = V.splitAt n u in V.map (*a) l V.++ r
            GT -> V.unsafeUpdate_ u (sampleIndexes n incx) (V.map (*a) $ sample n u incx)
+
+{- | O(n) copy n elements from one vector into another according to the
+following specification
+
+@
+   forall incx>0, n>0, 0<=j<=length v 0<=i<n
+     (sscal n sx incx sy incy)!i =
+         if j==i*incy
+            then if (sign incx) == (sign incy)
+                   then sx!(i*incx)
+                   else sx!(incx*(n-1-i))
+            else sy!j
+@
+
+  The elements selected from the vector are controlled by the parameters
+  n and incx.   The parameter n determines the number of elements, while
+  the parameter incx determines the spacing between selected elements.
+
+  No bound checks are performed.   The calling program should ensure that:
+
+@
+    length sx >= (1 + (n-1)incx)
+    length sy >= (1 + (n-1)incy)
+@
+-}
+scopy :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> V.Vector Float
+scopy n sx incx sy incy =
+    case n<1 of
+        True -> sy
+        _ -> case incy of
+            1  -> case incx of
+                1  -> (V.unsafeTake n sx) V.++ rs
+                0  -> (V.replicate n x0) V.++ rs
+                -1 -> (V.reverse $ V.unsafeTake n sx) V.++ rs
+                _  -> case s of
+                    True -> V.unsafeUpdate_ sy ixs xs
+                    _ -> V.unsafeUpdate_ sy ixs xs'
+            0  -> case incx of
+                0  -> V.unsafeUpd sy [(0,x0)]
+                _ -> case incx>0 of
+                    True -> V.unsafeUpd sy [(0,xn)]
+                    _ -> V.unsafeUpd sy [(0,x0)]
+            -1 -> case incx of
+                -1 -> (V.unsafeTake n sx) V.++ rs
+                0  -> (V.replicate n x0) V.++ rs
+                1  -> (V.reverse $ V.unsafeTake n sx) V.++ rs
+                _  -> case s of
+                    True -> V.unsafeUpdate_ sy ixs xs
+                    _ -> V.unsafeUpdate_ sy ixs xs'
+            _ -> case incx of
+                -1 -> if incy<0
+                        then V.unsafeUpdate_ sy ixs (V.unsafeTake n sx)
+                        else V.unsafeUpdate_ sy ixs (V.reverse $ V.unsafeTake n sx)
+                0  -> V.unsafeUpdate_ sy ixs (V.replicate n x0)
+                1  -> if incy>0
+                        then V.unsafeUpdate_ sy ixs (V.unsafeTake n sx)
+                        else V.unsafeUpdate_ sy ixs (V.reverse $ V.unsafeTake n sx)
+                _  -> case s of
+                    True -> V.unsafeUpdate_ sy ixs xs
+                    _    -> V.unsafeUpdate_ sy ixs xs'
+    where
+    rs = V.unsafeDrop n sy
+    s = (incx>0 && incy>0) || (incx<0 && incy<0)
+    x0 = sx `V.unsafeIndex` 0
+    xn = sx `V.unsafeIndex` ((n-1)*abs incx)
+    xs = sample n sx (abs incx)
+    xs' = samplerev n sx (-abs incx)
+    ixs = sampleIndexes n (abs incy)
+
 
 {- | O(n) sasum computes the sum of the absolute value of elements drawn a
   vector according to the following specification

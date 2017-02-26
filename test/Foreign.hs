@@ -20,9 +20,9 @@ module Foreign(
     ) where
 
 import Numerical.BLAS.Types
-import qualified Data.Vector.Storable as V
-import Data.Vector.Storable.Internal
 
+import qualified Data.Vector.Storable as V
+import  Data.Vector.Storable.Internal
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
 import Foreign.Marshal.Array
