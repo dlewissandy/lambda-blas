@@ -37,6 +37,7 @@ tests = testGroup "BLAS"
         , iviTest "snrm2" snrm2 (Fortran.snrm2) (elements [1..5])
         , iviTest "isamax" (\ n u incx -> succ $ isamax n u incx ) (Fortran.isamax) (elements [1..5])
         , sscalTest "sscal" sscal (elements [1..5])
+        , scopyTest "scopy" Fortran.scopy_unsafe (elements [-5..5])
         ]
     ]
 
@@ -313,4 +314,26 @@ sscalTest testname func genInc = testProperty testname $
            -- compute the expected and observed values
            expected <- Fortran.sscal n a u incx
            let observed = func n a u incx
+           runTest expected observed
+
+-- | Evidence that the native scopy function is byte equivalent to the CBLAS
+-- implementation.  Vectors of length 1-10 are tested having elements that are
+-- in the range of approximately (epsilon/2,2/epsilon)
+scopyTest :: String
+         -> (Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float))
+         -> Gen Int
+         -> TestTree
+scopyTest testname func genInc = testProperty testname $
+    -- Choose the length of the vector
+    forAll (choose (1,100)) $ \ n ->
+    -- Randomly generate a vector of the chosen length
+    forAll genInc $ \ incx ->
+    forAll genInc $ \ incy ->
+    forAll (genNVector genNiceFloat (1+(n-1)*(abs incx))) $ \ u ->
+    forAll (genNVector genNiceFloat (1+(n-1)*(abs incy))) $ \ v ->
+       -- monadically marshal the vectors into arrays for use with CBLAS
+       ioProperty $ do
+           -- compute the expected and observed values
+           expected <- Fortran.scopy n u incx v incy
+           observed <- func n u incx v incy
            runTest expected observed

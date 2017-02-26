@@ -174,11 +174,11 @@ copy_helper f n sx incx sy incy =
     alloca $ \ pn ->
     alloca $ \ pincx ->
     alloca $ \ pincy -> do
-        V.MVector z fptry <- V.thaw sy
         V.MVector _ fptrx <- V.unsafeThaw sx
+        V.MVector z fptry <- V.thaw sy
         poke pn n
         poke pincx incx
-        poke pincx incy
+        poke pincy incy
         f pn (getPtr fptrx) pincx (getPtr fptry) pincy
         V.unsafeFreeze $ V.MVector z fptry
 
