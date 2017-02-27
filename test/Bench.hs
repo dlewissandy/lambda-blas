@@ -137,13 +137,13 @@ srotg_benchs !sa !sb = bgroup "srotg"
 -- | benchmarks for the srotmg function
 srotmg_benchs :: Float -> Float -> Float -> Float -> Benchmark
 srotmg_benchs !sd1 !sd2 !sx1 !sy1 = bgroup "srotmg"
-  [ -- bgroup "haskell"  [ benchPure srotg sa sb]
-  bgroup "unsafe"   [ benchIO FORTRAN.srotmg_unsafe ]
+  [ bgroup "haskell"  [ benchPure srotmg sd1 sd2 sx1 sy1]
+  , bgroup "unsafe"   [ benchIO FORTRAN.srotmg_unsafe ]
   , bgroup "safe"     [ benchIO FORTRAN.srotmg ]
   ]
   where
-   {-benchPure f a b = bench showTestCase $
-       nf (uncurry f) (a,b) -}
+   benchPure f a b c d = bench showTestCase $
+       nf (\ (aa,bb,cc,dd) -> f aa bb cc dd) (a,b,c,d)
    benchIO f = bench (showTestCase) $
        nfIO $ f sd1 sd2 sx1 sy1
    showTestCase  = "srotmg(sd1,sd2,sx1,sx2)"

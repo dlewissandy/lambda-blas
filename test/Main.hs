@@ -32,7 +32,7 @@ tests = testGroup "BLAS"
         , dotTest "sdot_stream" sdot_stream (elements [-5..5])
         , sdsdotTest "sdsdot" sdsdot (elements [-5..5])
         , srotgTest "srotg" srotg
-        , srotmgTest "srotmg" Fortran.srotmg_unsafe
+        , srotmgTest "srotmg" srotmg
         , iviTest "sasum" sasum (Fortran.sasum) (elements [1..5])
         , iviTest "snrm2" snrm2 (Fortran.snrm2) (elements [1..5])
         , iviTest "isamax" (\ n u incx -> succ $ isamax n u incx ) (Fortran.isamax) (elements [1..5])
@@ -107,7 +107,7 @@ srotgTest testname func = testProperty testname $
 -- | Evidence that the native srotmg function is byte equivalent to the BLAS
 -- implementation.  Parameter values that are in the range of approximately
 -- +/-(epsilon/2,2/epsilon) are tested.
-srotmgTest :: String -> (Float -> Float -> Float -> Float -> IO (ModGivensRot Float) ) -> TestTree
+srotmgTest :: String -> (Float -> Float -> Float -> Float -> ModGivensRot Float ) -> TestTree
 srotmgTest testname func = testProperty testname $
    forAll genNiceFloat $ \ sd1 ->
    forAll genNiceFloat $ \ sd2 ->
@@ -117,7 +117,7 @@ srotmgTest testname func = testProperty testname $
       ioProperty $ do
           -- compute the expected and observed values
           expected <- Fortran.srotmg sd1 sd2 sx1 sy1
-          observed <- func sd1 sd2 sx1 sy1
+          let observed = func sd1 sd2 sx1 sy1
           runTest expected observed
 
 
