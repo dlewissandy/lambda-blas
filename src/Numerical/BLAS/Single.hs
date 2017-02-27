@@ -502,6 +502,21 @@ srotg sa sb =
         scale = asa + asb
         magnitude = scale * sqrt((sa/scale)^(2::Int)+(sb/scale)^(2::Int))
 
+{- | O(1) Construct a modified plane Givens rotation on a deconstructed
+two-vector as described in "Basic Linear Algebra Subprograms for Fortran
+Use", Lawson 1979.  The solution should satisfy
+
+
+  | d1 0 | | h11 h12 | | sx1/x1 |     | sd1 0   | | sx1 |
+  | 0 d2 | | h21 h22 | | sy1/x1 | = G | 0   sd2 | | sx2 |
+@
+
+where G is the Givens rotation matirx.   d1, d2 and x1 are rescaled by the the
+"checkscale" subprogram to be within the conservative limits of +/- 1/(4096)^2
+and +/- 4096^2.
+
+-}
+
 srotmg :: Float -> Float -> Float -> Float -> ModGivensRot Float
 srotmg sd1 sd2 sx1 sy1
    | sd1 < 0   = FLAGNEG1 { d1=0, d2=0, x1=0, h11=0, h12=0, h21=0, h22=0}
@@ -535,7 +550,8 @@ srotmg sd1 sd2 sx1 sy1
           GT -> FLAG1 { .. }
 
 -- | A helper function that ensures that the scale of sd1 and sd2 fall between
--- 1.677E7 and 1/1.677E7.   This is called by
+-- 1.677E7 and 1/1.677E7.   This is called by srotmg to scale the modified
+-- Givens rotation matrix to avoid underflow.
 {-# INLINE checkscale #-}
 checkscale :: (Int,Float,Float,Float,Float,Float,Float,Float) -> (Int,Float,Float,Float,Float,Float,Float,Float)
 checkscale = checkscale2 . checkscale1
