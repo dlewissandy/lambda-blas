@@ -16,7 +16,7 @@ module Foreign(
 --    srotm,
     srotmg,srotmg_unsafe,
     sscal,sscal_unsafe,
---    sswap,
+    sswap,sswap_unsafe,
     ) where
 
 import Numerical.BLAS.Types
@@ -51,8 +51,8 @@ foreign import ccall        "srotmg_" srotmg_foreign :: Ptr Float -> Ptr Float -
 foreign import ccall unsafe "srotmg_" srotmg_unsafe_ :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
 foreign import ccall        "sscal_"  sscal_foreign  :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> IO ()
 foreign import ccall unsafe "sscal_"  sscal_unsafe_  :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> IO ()
---foreign import ccall "sswap_"  sswap_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
-
+foreign import ccall        "sswap_"  sswap_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
+foreign import ccall unsafe "sswap_"  sswap_unsafe_  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
 
 -- | Call the fortran implementation of the sdot function.   For details
 -- please see <https://software.intel.com/en-us/node/468398#D4E53C70-D8FA-4095-A800-4203CAFE64FE BLAS documentation>
@@ -181,6 +181,28 @@ copy_helper f n sx incx sy incy =
         poke pincy incy
         f pn (getPtr fptrx) pincx (getPtr fptry) pincy
         V.unsafeFreeze $ V.MVector z fptry
+
+-- | Call the FORTRAN implementation of the sswap function.   For details
+-- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
+sswap :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float, V.Vector Float)
+sswap = swap_helper sswap_foreign
+sswap_unsafe :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float, V.Vector Float)
+sswap_unsafe = swap_helper sswap_unsafe_
+{-# INLINE swap_helper #-}
+sswap_helper :: Storable a => (Ptr Int -> Ptr a -> Ptr Int ->  Ptr a -> Ptr Int -> IO ())
+    -> Int -> V.Vector a -> Int -> V.Vector a -> Int -> IO (V.Vector a, Vector a)
+sswap_helper f n sx incx sy incy =
+    alloca $ \ pn ->
+    alloca $ \ pincx ->
+    alloca $ \ pincy -> do
+        V.MVector zx fptrx <- V.thaw sx
+        V.MVector zy fptry <- V.thaw sy
+        poke pn n
+        poke pincx incx
+        poke pincy incy
+        f pn (getPtr fptrx) pincx (getPtr fptry) pincy
+        V.unsafeFreeze $ V.MVector zx fptrx
+        V.unsafeFreeze $ V.MVector zy fptry
 
 -- =============================================================================
 -- HELPER FUNCTIONS
