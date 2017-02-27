@@ -15,6 +15,7 @@ module Numerical.BLAS.Single(
    sdsdot,
    srotg,
    srotmg,
+   sscal,
     ) where
 
 import Numerical.BLAS.Types
@@ -219,6 +220,35 @@ firstIndex !n !inc
     | inc>0     = 0
     | otherwise = (1-n)*inc
 
+{- | O(n) sscal multiply a scalar by n elements drawn from a vector
+according to the following specification:
+
+@
+   forall incx>0, n>0, 0<=i<=(n-1)*incx
+     (sscal n a u inc)!i ==
+         if i `mod` inc == 0
+            then a*u!i
+            else = u!i
+@
+
+  The elements selected from the vector are controlled by the parameters
+  n and incx.   The parameter n determines the number of elements, while
+  the parameter incx determines the spacing between selected elements.
+
+  No bound checks are performed.   The calling program should ensure that:
+
+@
+    length u >= (1 + (n-1)incx)
+@
+-}
+sscal :: Int -> Float -> V.Vector Float -> Int -> V.Vector Float
+sscal n a u incx =
+   case n<1 of
+       True -> u
+       False -> case compare incx 1 of
+           LT -> u
+           EQ -> let (l,r) = V.splitAt n u in V.map (*a) l V.++ r
+           GT -> V.unsafeUpdate_ u (sampleIndexes n incx) (V.map (*a) $ sample n u incx)
 
 {- | O(n) sasum computes the sum of the absolute value of elements drawn a
   vector according to the following specification
@@ -455,6 +485,23 @@ sample !n u !inc = unstream $ fromStream (Stream go 0) (Exact n)
     go !ix
        | ix > imax = return Done
        | otherwise = return $ Yield (u `V.unsafeIndex` ix) (ix+inc)
+    imax = (n-1)*inc
+
+-- | O(n), downstream fusable.   Sample a vector in even intevals, collecting the
+-- first n elements into a vector according to the following specification:
+--
+-- @
+-- sample n u inc = fromList [ u!(i*incx) | i<-[0..n-1]]
+-- @
+-- The vector must have at least (n-1)*inc elements in it.  This condition is
+-- not checked, and must be verified by the calling program
+sampleIndexes :: Int -> Int -> V.Vector Int
+{-# INLINE sampleIndexes #-}
+sampleIndexes !n !inc = unstream $ fromStream (Stream go 0) (Exact n)
+    where
+    go !ix
+       | ix > imax = return Done
+       | otherwise = return $ Yield ix (ix+inc)
     imax = (n-1)*inc
 
 -- | O(n), downstream fusable.   Sample a vector in even intevals, collecting the
