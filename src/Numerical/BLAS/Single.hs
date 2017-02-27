@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE RecordWildCards #-}
 -- | This module provides BLAS library functions for vectors of
 -- single precision floating point numbers.
 module Numerical.BLAS.Single(
@@ -13,6 +14,7 @@ module Numerical.BLAS.Single(
    snrm2,
    sdsdot,
    srotg,
+   srotmg,
     ) where
 
 import Numerical.BLAS.Types
@@ -499,3 +501,94 @@ srotg sa sb =
         asb = abs sb
         scale = asa + asb
         magnitude = scale * sqrt((sa/scale)^(2::Int)+(sb/scale)^(2::Int))
+
+{- | O(1) Construct a modified plane Givens rotation on a deconstructed
+two-vector as described in "Basic Linear Algebra Subprograms for Fortran
+Use", Lawson 1979.  The solution should satisfy
+
+
+  | d1 0 | | h11 h12 | | sx1/x1 |     | sd1 0   | | sx1 |
+  | 0 d2 | | h21 h22 | | sy1/x1 | = G | 0   sd2 | | sx2 |
+@
+
+where G is the Givens rotation matirx.   d1, d2 and x1 are rescaled by the the
+"checkscale" subprogram to be within the conservative limits of +/- 1/(4096)^2
+and +/- 4096^2.
+
+-}
+
+srotmg :: Float -> Float -> Float -> Float -> ModGivensRot Float
+srotmg sd1 sd2 sx1 sy1
+   | sd1 < 0   = FLAGNEG1 { d1=0, d2=0, x1=0, h11=0, h12=0, h21=0, h22=0}
+   | sp2 == 0  = FLAGNEG2
+   | asq1>asq2 =
+       let sh21 = -sy1/sx1
+           sh12 = sp2/sp1
+           su  = 1 - sh12*sh21
+      in  if (su>0)
+            then mkparms $ checkscale (0,sd1/su,sd2/su,sx1*su,0,sh12,sh21,0)
+            else mkparms $ checkscale (0,sd1,sd2,sx1,0,sh12,sh21,0)
+   | otherwise = if sq2 < 0
+      then mkparms $ checkscale (-1,0,0,0,0,0,0,0)
+      else let su = 1 + sh11*sh22
+               sh11 = sp1/sp2
+               sh22 = sx1/sy1
+           in  mkparms $ checkscale (1,sd2/su,sd1/su,sy1*su,sh11,0,0,sh22)
+   where
+   sp2 = sd2*sy1
+   sp1 = sd1*sx1
+   sq2 = sp2*sy1
+   sq1 = sp1*sx1
+   asq1 = abs sq1
+   asq2 = abs sq2
+   {-# INLINE mkparms #-}
+   mkparms :: (Int, Float, Float, Float, Float, Float, Float, Float) -> ModGivensRot Float
+   mkparms (flag,d1,d2,x1,h11,h12,h21,h22) =
+      case compare flag 0 of
+          LT -> FLAGNEG1 { .. }
+          EQ -> FLAG0 { .. }
+          GT -> FLAG1 { .. }
+
+-- | A helper function that ensures that the scale of sd1 and sd2 fall between
+-- 1.677E7 and 1/1.677E7.   This is called by srotmg to scale the modified
+-- Givens rotation matrix to avoid underflow.
+{-# INLINE checkscale #-}
+checkscale :: (Int,Float,Float,Float,Float,Float,Float,Float) -> (Int,Float,Float,Float,Float,Float,Float,Float)
+checkscale = checkscale2 . checkscale1
+   where
+   gam, gamsq, rgamsq :: Float
+   gam = 4096
+   gamsq = 1.67772E7
+   rgamsq = 5.96046E-8
+   {-# INLINE checkscale1 #-}
+   checkscale1 z@(_,sd1,_,_,_,_,_,_)
+       | sd1 == 0  =z
+       | otherwise = gocheck1 z
+       where
+       {-# INLINE gocheck1 #-}
+       gocheck1 zz@(_,sd1',_,_,_,_,_,_)
+           | sd1' >rgamsq && sd1' < gamsq = zz
+           | otherwise = gocheck1 $ check1B $ checkA zz
+       {-# INLINE check1B #-}
+       check1B (f,sd1',sd2,sx1,sh11,sh12,sh21,sh22)
+           | a <= rgamsq = ( f, sd1'*gam^(2::Int), sd2, sx1/gam, sh11/gam, sh12/gam, sh21, sh22)
+           | otherwise   = ( f, sd1'/gam^(2::Int), sd2, sx1*gam, sh11*gam, sh12*gam, sh21, sh22)
+           where a = abs sd1'
+   {-# INLINE checkscale2 #-}
+   checkscale2 z@(_,_,sd2,_,_,_,_,_)
+       | sd2 == 0  = z
+       | otherwise = gocheck2 z
+       where
+       {-# INLINE gocheck2 #-}
+       gocheck2 zz@(_,_,sd2',_,_,_,_,_)
+           | a > rgamsq && a < gamsq = zz
+           | otherwise = gocheck2 $ check2B a $ checkA zz
+           where a = abs sd2'
+       {-# INLINE check2B #-}
+       check2B a (f,sd1,sd2',sx1,sh11,sh12,sh21,sh22)
+           | a <= rgamsq = ( f, sd1, sd2'*gam^(2::Int), sx1, sh11, sh12, sh21/gam, sh22/gam)
+           | otherwise   = ( f, sd1, sd2'/gam^(2::Int), sx1, sh11, sh12, sh21*gam, sh22*gam)
+   {-# INLINE checkA #-}
+   checkA (f,sd1,sd2,sx1,sh11,sh12,sh21,sh22)
+       | f==0      = ( -1, sd1, sd2, sx1, 1, sh12, sh21, 1 )
+       | otherwise = ( -1, sd1, sd2, sx1, sh11, 1, -1, sh22 )
