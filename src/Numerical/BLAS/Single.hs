@@ -16,7 +16,8 @@ module Numerical.BLAS.Single(
    srotg,
    srotmg,
    sscal,
-   scopy,copyHelper
+   scopy,
+   sswap,
     ) where
 
 import Numerical.BLAS.Types
@@ -256,7 +257,7 @@ following specification
 
 @
    forall incx>0, n>0, 0<=j<=length v 0<=i<n
-     (sscal n sx incx sy incy)!i =
+     (scopy n sx incx sy incy)!i =
          if j==i*incy
             then if (sign incx) == (sign incy)
                    then sx!(i*incx)
@@ -276,62 +277,66 @@ following specification
 @
 -}
 scopy :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> V.Vector Float
-scopy n sx incx sy incy =
-    case n<1 of
-        True -> sy
-        _ -> case incy of
-            1  -> case incx of
-                1  -> (V.unsafeTake n sx) V.++ rs
-                0  -> (V.replicate n x0) V.++ rs
-                -1 -> (V.reverse $ V.unsafeTake n sx) V.++ rs
-                _  -> case s of
-                    True -> V.unsafeUpdate_ sy ixs xs
-                    _ -> V.unsafeUpdate_ sy ixs xs'
-            0  -> case incx of
-                0  -> V.unsafeUpd sy [(0,x0)]
-                _ -> case incx>0 of
-                    True -> V.unsafeUpd sy [(0,xn)]
-                    _ -> V.unsafeUpd sy [(0,x0)]
-            -1 -> case incx of
-                -1 -> (V.unsafeTake n sx) V.++ rs
-                0  -> (V.replicate n x0) V.++ rs
-                1  -> (V.reverse $ V.unsafeTake n sx) V.++ rs
-                _  -> case s of
-                    True -> V.unsafeUpdate_ sy ixs xs
-                    _ -> V.unsafeUpdate_ sy ixs xs'
-            _ -> case incx of
-                -1 -> if incy<0
-                        then V.unsafeUpdate_ sy ixs (V.unsafeTake n sx)
-                        else V.unsafeUpdate_ sy ixs (V.reverse $ V.unsafeTake n sx)
-                0  -> V.unsafeUpdate_ sy ixs (V.replicate n x0)
-                1  -> if incy>0
-                        then V.unsafeUpdate_ sy ixs (V.unsafeTake n sx)
-                        else V.unsafeUpdate_ sy ixs (V.reverse $ V.unsafeTake n sx)
-                _  -> case s of
-                    True -> V.unsafeUpdate_ sy ixs xs
-                    _    -> V.unsafeUpdate_ sy ixs xs'
+scopy n src incs dst incd = copyHelper' sdsd aincs aincd ixs ixd ixd' n src incs dst
     where
-    rs = V.unsafeDrop n sy
-    s = (incx>0 && incy>0) || (incx<0 && incy<0)
-    x0 = sx `V.unsafeIndex` 0
-    xn = sx `V.unsafeIndex` ((n-1)*abs incx)
-    xs = sample n sx (abs incx)
-    xs' = samplerev n sx (-abs incx)
-    ixs = sampleIndices n (abs incy)
+    aincs = abs incs
+    aincd = abs incd
+    sdsd  = (signum incs)*incd
+    ixd = sampleIndices n aincd
+    ixd' = sampleIndicesRev n (-aincd)
+    ixs = sampleIndices n aincs
 
-copyHelper :: Int ->
-   V.Vector Float -> Int -> V.Vector Float -> Int -> V.Vector Float
-copyHelper n src incs dst incd =
+{- | O(n) swap n elements between two vectors according to the following
+specification:
+
+@
+   forall incx/=0, incy/=0, n>0
+     sswap n u incx v incy = (scopy n v incy u incx, scopy n u incx v incy)
+@
+
+  The elements selected from the vector are controlled by the parameters
+  n and incx.   The parameter n determines the number of elements, while
+  the parameter incx determines the spacing between selected elements.
+
+  No bound checks are performed.   The calling program should ensure that:
+
+@
+    length sx >= (1 + (n-1)abs incx)
+    length sy >= (1 + (n-1)abs incy)
+@
+-}
+sswap :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> (V.Vector Float, V.Vector Float)
+sswap n src incs dst incd =
+    ( copyHelper' sdsd aincd aincs ixd ixs ixs' n dst incd src
+    , copyHelper' sdsd aincs aincd ixs ixd ixd' n src incs dst )
+    where
+    aincs = abs incs
+    aincd = abs incd
+    sdsd  = (signum incs)*incd
+    ixd  = sampleIndices n aincd
+    ixd' = sampleIndicesRev n (-aincd)
+    ixs  = sampleIndices n aincs
+    ixs' = sampleIndicesRev n (-aincs)
+
+
+-- | O(n) -- This helper function copies the elements from one vector into
+-- another.  The first six arguments are somewhat expensive to generate, and
+-- can be amortized over other copies (for example in the swap function).
+copyHelper' :: (V.Storable a)
+   => Int -> Int -> Int -> V.Vector Int -> V.Vector Int -> V.Vector Int
+   -> Int -> V.Vector a -> Int -> V.Vector a -> V.Vector a
+{-# INLINE copyHelper' #-}
+copyHelper' sdsd aincs aincd ixs ixd ixd' n src incs dst =
     case compare sdsd 0 of
         -- when incx * incy is negative, then the two vectors are being traversed
         -- in opposite directions.
         LT -> case aincs of
             1 -> case aincd of
                 1 -> (V.reverse ys) V.++ rs
-                _ -> V.unsafeUpdate_ dst ixs' ys
+                _ -> V.unsafeUpdate_ dst ixd' ys
             _ -> case aincd of
                 1 -> (V.reverse zs) V.++ rs
-                _ -> V.unsafeUpdate_ dst ixs' zs
+                _ -> V.unsafeUpdate_ dst ixd' zs
         -- When incx * incy is zero, then at least one of the vectors is not
         -- traversed.  Either the replacement will consist of the same element
         -- being replicated into multiple destinations, or multiple elements
@@ -341,25 +346,21 @@ copyHelper n src incs dst incd =
                 True  -> V.cons (V.last zs) $ V.tail dst
                 False -> V.cons src0 $ V.tail dst
             1 -> V.replicate n src0 V.++ rs
-            _ -> V.unsafeUpdate_ dst ixs (V.replicate n src0)
+            _ -> V.unsafeUpdate_ dst ixd (V.replicate n src0)
         -- when incx * incy is positive, the two vectors are being traversed
         -- in the same direction.
         GT -> case aincs of
             1 -> case aincd of
                 1 -> ys V.++ rs
-                _ -> V.unsafeUpdate_ dst ixs ys
+                _ -> V.unsafeUpdate_ dst ixd ys
             _ -> case aincd of
                 1 -> zs V.++ rs
-                _ -> V.unsafeUpdate_ dst ixs zs
+                _ -> V.unsafeUpdate_ dst ixd zs
     where
-    aincs = abs incs
-    aincd = abs incd
-    sdsd  = (signum incs)*incd
-    ixs = sampleIndices n aincd
-    ixs' = sampleIndicesRev n (-aincd)
-    rs = V.drop ((n-1)*aincd+1) dst
+--  distinct to this instance
+    rs = V.unsafeDrop ((n-1)*aincd+1) dst
     ys = V.unsafeTake n src
-    zs = sample n src aincs
+    zs = sampleElems src ixs
     src0 = V.unsafeIndex src 0
 
 {- | O(n) sasum computes the sum of the absolute value of elements drawn a
@@ -592,12 +593,13 @@ doubleToFloat (D# d) = case double2Float# d of
 -- not checked, and must be verified by the calling program
 sample :: Int -> V.Vector Float -> Int -> V.Vector Float
 {-# INLINE sample #-}
-sample !n u !inc = unstream $ fromStream (Stream go 0) (Exact n)
-    where
-    go !ix
-       | ix > imax = return Done
-       | otherwise = return $ Yield (u `V.unsafeIndex` ix) (ix+inc)
-    imax = (n-1)*inc
+sample !n u !inc = sampleElems u $ sampleIndices n inc
+
+-- | O(n), fusable.   Return a subvector containing only the specified
+-- indices form the original vector.
+sampleElems :: (V.Storable a)=> V.Vector a -> V.Vector Int -> V.Vector a
+{-# INLINE sampleElems #-}
+sampleElems u = V.map (\ i -> u `V.unsafeIndex` i )
 
 -- | O(n), downstream fusable.   Sample a vector in even intevals, collecting the
 -- first n elements into a vector according to the following specification:
@@ -626,11 +628,7 @@ sampleIndices !n !inc = unstream $ fromStream (Stream go 0) (Exact n)
 -- not checked, and must be verified by the calling program
 samplerev :: Int -> V.Vector Float -> Int -> V.Vector Float
 {-# INLINE samplerev #-}
-samplerev !n u !inc = unstream $ fromStream (Stream go ((1-n)*inc)) (Exact n)
-    where
-    go !ix
-       | ix < 0    = return Done
-       | otherwise = return $ Yield (u `V.unsafeIndex` ix) (ix+inc)
+samplerev !n u !inc = sampleElems u $ sampleIndicesRev n inc
 
 -- | O(n), downstream fusable.   A list of indices sampled in uniform increments
 -- but in reverse order

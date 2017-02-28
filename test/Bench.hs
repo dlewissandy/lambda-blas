@@ -97,7 +97,6 @@ sscal_benchs nmax !a u = bgroup "sscal"
 scopy_benchs :: Int -> V.Vector Float -> V.Vector Float -> Benchmark
 scopy_benchs nmax u v = bgroup "scopy"
   [ bgroup "stream"   [ benchPure scopy n inc | (n,inc)<-cs]
-  , bgroup "helper"   [ benchPure scopy n inc | (n,inc)<-cs]
   , bgroup "unsafe"   [ benchIO FORTRAN.scopy_unsafe n inc | (n,inc)<-cs]
   , bgroup "safe"     [ benchIO FORTRAN.scopy n inc | (n,inc)<-cs]
   ]
@@ -105,25 +104,25 @@ scopy_benchs nmax u v = bgroup "scopy"
   ns = let zs = [1..9]++map (*10) zs in takeWhile (<nmax) zs
   cs = [ (n,inc) | inc<-[1,10,100],n<-ns,(n-1)*inc<nmax]
   benchPure f !n !inc = bench (showTestCase n inc) $
-          nf (\ (a,b,c,d,e) -> f a b c d e) (n,V.take (1+(n-1)*inc) u,inc,V.take (1+(n-1)*inc) v,inc)
+          nf (\ (a,b,c,d,e) -> f a b c d e) (n,V.unsafeTake (1+(n-1)*inc) u,inc,V.unsafeTake (1+(n-1)*inc) v,inc)
   benchIO f !n !inc = bench (showTestCase n inc) $
-       nfIO $ f n (V.take (1+(n-1)*inc) u) inc (V.take (1+(n-1)*inc) v) inc
+       nfIO $ f n (V.unsafeTake (1+(n-1)*inc) u) inc (V.unsafeTake (1+(n-1)*inc) v) inc
   showTestCase n inc = "scopy("++show n++",u,"++show inc++",v,"++show inc++")"
 
 -- | benchmarks for the sswap function
 sswap_benchs :: Int -> V.Vector Float -> V.Vector Float -> Benchmark
 sswap_benchs nmax u v = bgroup "sswap"
-  [ -- bgroup "stream"   [ benchPure sscal n inc | (n,inc)<-cs]
-  bgroup "unsafe"   [ benchIO FORTRAN.sswap_unsafe n inc | (n,inc)<-cs]
+  [ bgroup "stream"   [ benchPure sswap n inc | (n,inc)<-cs]
+  , bgroup "unsafe"   [ benchIO FORTRAN.sswap_unsafe n inc | (n,inc)<-cs]
   , bgroup "safe"     [ benchIO FORTRAN.sswap n inc | (n,inc)<-cs]
   ]
   where
    ns = let zs = [1..9]++map (*10) zs in takeWhile (<nmax) zs
    cs = [ (n,inc) | inc<-[1,10,100],n<-ns,(n-1)*inc<nmax]
-   --benchPure f !n !inc = bench (showTestCase n inc) $
-    --      nf (\ (a,b,c,d,e) -> f a b c d e) (n,u,inc,v,inc)
+   benchPure f !n !inc = bench (showTestCase n inc) $
+          nf (\ (a,b,c,d,e) -> f a b c d e) (n,V.unsafeTake (1+(n-1)*inc) u,inc,V.unsafeTake (1+(n-1)*inc) v,inc)
    benchIO f !n !inc = bench (showTestCase n inc) $
-       nfIO $ f n u inc v inc
+       nfIO $ f n (V.unsafeTake (1+(n-1)*inc) u) inc (V.unsafeTake (1+(n-1)*inc) v) inc
    showTestCase n inc = "sswap("++show n++",u,"++show inc++",v,"++show inc++")"
 
 -- | benchmarks for the snrm2 function
