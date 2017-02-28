@@ -17,10 +17,6 @@ matrix:
       compiler: ": #stack 7.10.3"
       addons: {apt: {packages: [ghc-7.10.3,gfortran], sources: [hvr-ghc]}}
 
-    - env: BUILD=stack STACK_YAML=stack.yaml
-      compiler: ": #stack 7.10.3 osx"
-      os: osx
-
 before_install:
  - rvm get head # workarround for travis issue https://github.com/travis-ci/travis-ci/issues/6307
  - unset CC
