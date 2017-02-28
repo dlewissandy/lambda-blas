@@ -97,6 +97,7 @@ sscal_benchs nmax !a u = bgroup "sscal"
 scopy_benchs :: Int -> V.Vector Float -> V.Vector Float -> Benchmark
 scopy_benchs nmax u v = bgroup "scopy"
   [ bgroup "stream"   [ benchPure scopy n inc | (n,inc)<-cs]
+  , bgroup "helper"   [ benchPure scopy n inc | (n,inc)<-cs]
   , bgroup "unsafe"   [ benchIO FORTRAN.scopy_unsafe n inc | (n,inc)<-cs]
   , bgroup "safe"     [ benchIO FORTRAN.scopy n inc | (n,inc)<-cs]
   ]

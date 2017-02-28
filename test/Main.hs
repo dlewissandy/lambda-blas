@@ -38,6 +38,7 @@ tests = testGroup "BLAS"
         , iviTest "isamax" (\ n u incx -> succ $ isamax n u incx ) (Fortran.isamax) (elements [1..5])
         , sscalTest "sscal" sscal (elements [1..5])
         , scopyTest "scopy" scopy (elements [-5..5])
+        , scopyTest "copyHelper" copyHelper (elements [-5..5])
         , sswapTest "sswap" Fortran.sswap_unsafe (elements [-5..5])
         ]
     ]
@@ -352,12 +353,14 @@ scopyTest :: String
          -> TestTree
 scopyTest testname func genInc = testProperty testname $
     -- Choose the length of the vector
-    forAll (choose (1,100)) $ \ n ->
+    forAll (choose (1,10)) $ \ n ->
+    forAll (choose (1,10)) $ \ mx ->
+    forAll (choose (1,10)) $ \ my ->
     -- Randomly generate a vector of the chosen length
     forAll genInc $ \ incx ->
     forAll genInc $ \ incy ->
-    forAll (genNVector genNiceFloat (2+(n-1)*(abs incx))) $ \ u ->
-    forAll (genNVector genNiceFloat (2+(n-1)*(abs incy))) $ \ v ->
+    forAll (pure $ V.take (mx+(n-1)*(abs incx)) $ V.fromList [1..2000]) $ \ u ->
+    forAll (pure $ V.take (my+(n-1)*(abs incy)) $ V.fromList [1000..3000]) $ \ v ->
        -- monadically marshal the vectors into arrays for use with CBLAS
        ioProperty $ do
            -- compute the expected and observed values

@@ -16,7 +16,7 @@ module Numerical.BLAS.Single(
    srotg,
    srotmg,
    sscal,
-   scopy,
+   scopy,copyHelper
     ) where
 
 import Numerical.BLAS.Types
@@ -249,7 +249,7 @@ sscal n a u incx =
        False -> case compare incx 1 of
            LT -> u
            EQ -> let (l,r) = V.splitAt n u in V.map (*a) l V.++ r
-           GT -> V.unsafeUpdate_ u (sampleIndexes n incx) (V.map (*a) $ sample n u incx)
+           GT -> V.unsafeUpdate_ u (sampleIndices n incx) (V.map (*a) $ sample n u incx)
 
 {- | O(n) copy n elements from one vector into another according to the
 following specification
@@ -317,8 +317,50 @@ scopy n sx incx sy incy =
     xn = sx `V.unsafeIndex` ((n-1)*abs incx)
     xs = sample n sx (abs incx)
     xs' = samplerev n sx (-abs incx)
-    ixs = sampleIndexes n (abs incy)
+    ixs = sampleIndices n (abs incy)
 
+copyHelper :: Int ->
+   V.Vector Float -> Int -> V.Vector Float -> Int -> V.Vector Float
+copyHelper n src incs dst incd =
+    case compare sdsd 0 of
+        -- when incx * incy is negative, then the two vectors are being traversed
+        -- in opposite directions.
+        LT -> case aincs of
+            1 -> case aincd of
+                1 -> (V.reverse ys) V.++ rs
+                _ -> V.unsafeUpdate_ dst ixs' ys
+            _ -> case aincd of
+                1 -> (V.reverse zs) V.++ rs
+                _ -> V.unsafeUpdate_ dst ixs' zs
+        -- When incx * incy is zero, then at least one of the vectors is not
+        -- traversed.  Either the replacement will consist of the same element
+        -- being replicated into multiple destinations, or multiple elements
+        -- will be (destructively) written to the same destination
+        EQ -> case aincd of
+            0 -> case incs > 0 of
+                True  -> V.cons (V.last zs) $ V.tail dst
+                False -> V.cons src0 $ V.tail dst
+            1 -> V.replicate n src0 V.++ rs
+            _ -> V.unsafeUpdate_ dst ixs (V.replicate n src0)
+        -- when incx * incy is positive, the two vectors are being traversed
+        -- in the same direction.
+        GT -> case aincs of
+            1 -> case aincd of
+                1 -> ys V.++ rs
+                _ -> V.unsafeUpdate_ dst ixs ys
+            _ -> case aincd of
+                1 -> zs V.++ rs
+                _ -> V.unsafeUpdate_ dst ixs zs
+    where
+    aincs = abs incs
+    aincd = abs incd
+    sdsd  = (signum incs)*incd
+    ixs = sampleIndices n aincd
+    ixs' = sampleIndicesRev n (-aincd)
+    rs = V.drop ((n-1)*aincd+1) dst
+    ys = V.unsafeTake n src
+    zs = sample n src aincs
+    src0 = V.unsafeIndex src 0
 
 {- | O(n) sasum computes the sum of the absolute value of elements drawn a
   vector according to the following specification
@@ -565,9 +607,9 @@ sample !n u !inc = unstream $ fromStream (Stream go 0) (Exact n)
 -- @
 -- The vector must have at least (n-1)*inc elements in it.  This condition is
 -- not checked, and must be verified by the calling program
-sampleIndexes :: Int -> Int -> V.Vector Int
-{-# INLINE sampleIndexes #-}
-sampleIndexes !n !inc = unstream $ fromStream (Stream go 0) (Exact n)
+sampleIndices :: Int -> Int -> V.Vector Int
+{-# INLINE sampleIndices #-}
+sampleIndices !n !inc = unstream $ fromStream (Stream go 0) (Exact n)
     where
     go !ix
        | ix > imax = return Done
@@ -589,6 +631,21 @@ samplerev !n u !inc = unstream $ fromStream (Stream go ((1-n)*inc)) (Exact n)
     go !ix
        | ix < 0    = return Done
        | otherwise = return $ Yield (u `V.unsafeIndex` ix) (ix+inc)
+
+-- | O(n), downstream fusable.   A list of indices sampled in uniform increments
+-- but in reverse order
+--
+-- @
+-- sample n u inc = fromList $ reverse [ (i*incx) | i<-[0..n-1]]
+-- @
+sampleIndicesRev :: Int -> Int -> V.Vector Int
+{-# INLINE sampleIndicesRev #-}
+sampleIndicesRev !n !inc = unstream $ fromStream (Stream go ((1-n)*inc)) (Exact n)
+    where
+    go !ix
+       | ix < 0    = return Done
+       | otherwise = return $ Yield ix (ix+inc)
+
 
 {- | O(1) Construct a plane Givens rotation on a deconstructed two-vector.
 Specifically:
