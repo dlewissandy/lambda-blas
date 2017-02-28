@@ -38,6 +38,7 @@ tests = testGroup "BLAS"
         , iviTest "isamax" (\ n u incx -> succ $ isamax n u incx ) (Fortran.isamax) (elements [1..5])
         , sscalTest "sscal" sscal (elements [1..5])
         , scopyTest "scopy" scopy (elements [-5..5])
+        , sswapTest "sswap" Fortran.sswap_unsafe (elements [-5..5])
         ]
     ]
 
@@ -91,6 +92,32 @@ sdsdotTest testname func genInc = testProperty testname $
           expected <- Fortran.sdsdot n a us incx vs incy
           let observed = func n a u incx v incy
           runTest expected observed
+
+-- | Evidence that the native sswap function is byte equivalent to the BLAS
+-- implementation.  Vectors of length 1-100 are tested having elements that are
+-- in the range of approximately +/-(epsilon/2,2/epsilon)
+sswapTest :: String
+        -> (Int ->  V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float, V.Vector Float))
+        -> Gen Int
+        -> TestTree
+sswapTest testname func genInc = testProperty testname $
+   -- Choose the length of the vector.   Vectors will have a length of (1+(n-1)*abs inc)+m)
+   forAll (choose (1,100)) $ \ n ->
+   forAll (choose (0,100)) $ \ mx ->
+   forAll (choose (0,100)) $ \ my ->
+   -- Randomly generate two vectors of the chosen length
+   forAll (genInc) $ \ incx ->
+   forAll (genInc) $ \ incy ->
+   forAll (genNVector genNiceFloat (mx+1+(n-1)*abs incx )) $ \ u ->
+   forAll (genNVector genNiceFloat (my+1+(n-1)*abs incy )) $ \ v ->
+
+      -- monadically marshal the vectors into arrays for use with CBLAS
+      ioProperty $ do
+          -- compute the expected and observed values
+          expected <- Fortran.sswap n u incx v incy
+          observed <- func n u incx v incy
+          runTest expected observed
+
 
 -- | Evidence that the native srotg function is byte equivalent to the BLAS
 -- implementation.  Parameter values that are in the range of approximately

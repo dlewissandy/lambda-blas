@@ -189,9 +189,9 @@ sswap = swap_helper sswap_foreign
 sswap_unsafe :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float, V.Vector Float)
 sswap_unsafe = swap_helper sswap_unsafe_
 {-# INLINE swap_helper #-}
-sswap_helper :: Storable a => (Ptr Int -> Ptr a -> Ptr Int ->  Ptr a -> Ptr Int -> IO ())
-    -> Int -> V.Vector a -> Int -> V.Vector a -> Int -> IO (V.Vector a, Vector a)
-sswap_helper f n sx incx sy incy =
+swap_helper :: Storable a => (Ptr Int -> Ptr a -> Ptr Int ->  Ptr a -> Ptr Int -> IO ())
+    -> Int -> V.Vector a -> Int -> V.Vector a -> Int -> IO (V.Vector a, V.Vector a)
+swap_helper f n sx incx sy incy =
     alloca $ \ pn ->
     alloca $ \ pincx ->
     alloca $ \ pincy -> do
@@ -201,8 +201,9 @@ sswap_helper f n sx incx sy incy =
         poke pincx incx
         poke pincy incy
         f pn (getPtr fptrx) pincx (getPtr fptry) pincy
-        V.unsafeFreeze $ V.MVector zx fptrx
-        V.unsafeFreeze $ V.MVector zy fptry
+        u<-V.unsafeFreeze $ V.MVector zx fptrx
+        v<-V.unsafeFreeze $ V.MVector zy fptry
+        return (u,v)
 
 -- =============================================================================
 -- HELPER FUNCTIONS
