@@ -6,7 +6,7 @@ module Foreign(
     isamax,isamax_unsafe,
     sasum,sasum_unsafe,
 --    saxpy,
---    scopy,
+    scopy,scopy_unsafe,
     sdsdot,sdsdot_unsafe,
     sdot,sdot_unsafe,
     snrm2,snrm2_unsafe,
@@ -20,9 +20,9 @@ module Foreign(
     ) where
 
 import Numerical.BLAS.Types
-import qualified Data.Vector.Storable as V
-import Data.Vector.Storable.Internal
 
+import qualified Data.Vector.Storable as V
+import  Data.Vector.Storable.Internal
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
 import Foreign.Marshal.Array
@@ -35,7 +35,8 @@ foreign import ccall "sasum_"  sasum_foreign  :: Ptr Int -> Ptr Float -> Ptr Int
 foreign import ccall unsafe "sasum_" sasum_unsafe_  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 --foreign import ccall "saxpy_"  saxpy_foreign  :: Ptr Int -> Ptr Float ->  Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
 --foreign import ccall "scnrm2_" scnrm2_foreign :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
---foreign import ccall "scopy_"  scopy_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
+foreign import ccall        "scopy_"  scopy_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
+foreign import ccall unsafe "scopy_"  scopy_unsafe_  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
 foreign import ccall "sdot_"   sdot_foreign   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall unsafe "sdot_"   sdot_unsafe_ :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall        "sdsdot_" sdsdot_foreign :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
@@ -159,6 +160,27 @@ scal_helper f n sa sx incx =
         poke pincx incx
         f pn pa (getPtr fptr) pincx
         V.unsafeFreeze $ V.MVector z fptr
+
+-- | Call the FORTRAN implementation of the scopy function.   For details
+-- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
+scopy :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float)
+scopy = copy_helper scopy_foreign
+scopy_unsafe :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float)
+scopy_unsafe = copy_helper scopy_unsafe_
+copy_helper :: Storable a => (Ptr Int ->  Ptr a -> Ptr Int -> Ptr a -> Ptr Int -> IO ())
+    -> Int -> V.Vector a -> Int -> V.Vector a -> Int -> IO (V.Vector a)
+{-# INLINE copy_helper #-}
+copy_helper f n sx incx sy incy =
+    alloca $ \ pn ->
+    alloca $ \ pincx ->
+    alloca $ \ pincy -> do
+        V.MVector _ fptrx <- V.unsafeThaw sx
+        V.MVector z fptry <- V.thaw sy
+        poke pn n
+        poke pincx incx
+        poke pincy incy
+        f pn (getPtr fptrx) pincx (getPtr fptry) pincy
+        V.unsafeFreeze $ V.MVector z fptry
 
 -- =============================================================================
 -- HELPER FUNCTIONS
