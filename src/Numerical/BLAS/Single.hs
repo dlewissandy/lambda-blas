@@ -322,9 +322,19 @@ sswap n src incs dst incd =
 -- | O(n) -- This helper function copies the elements from one vector into
 -- another.  The first six arguments are somewhat expensive to generate, and
 -- can be amortized over other copies (for example in the swap function).
+-- NOTE: This helper funciton is not exported.
 copyHelper' :: (V.Storable a)
-   => Int -> Int -> Int -> V.Vector Int -> V.Vector Int -> V.Vector Int
-   -> Int -> V.Vector a -> Int -> V.Vector a -> V.Vector a
+   => Int -- ^ the sign of the product of two increments
+   -> Int -- ^ the absolute value of the increment for the source vector
+   -> Int -- ^ the absolute value of the increment for the destination vector
+   -> V.Vector Int -- ^ the indices to copy from the source vector
+   -> V.Vector Int -- ^ the indices to modify in the destination vector
+   -> V.Vector Int -- ^ the indices to modify in the destination vector (in reverse)
+   -> Int -- ^ The number of elements to copy
+   -> V.Vector a -- ^ The source vector
+   -> Int        -- ^ The increment used for the source vector
+   -> V.Vector a -- ^ The destination vector
+   -> V.Vector a
 {-# INLINE copyHelper' #-}
 copyHelper' sdsd aincs aincd ixs ixd ixd' n src incs dst =
     case compare sdsd 0 of
