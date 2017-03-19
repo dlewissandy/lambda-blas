@@ -40,6 +40,7 @@ tests = testGroup "BLAS"
         , scopyTest "scopy" scopy (elements [-5..5])
         , sswapTest "sswap" sswap (elements [-5..5])
         , srotTest "srot" srot (elements [-5,5])
+        , saxpyTest "saxpy" saxpy (elements [-5,5])
         ]
     ]
 
@@ -388,4 +389,27 @@ scopyTest testname func genInc = testProperty testname $
            -- compute the expected and observed values
            expected <- Fortran.scopy n u incx v incy
            let observed = func n u incx v incy
+           runTest expected observed
+
+-- | Evidence that the native saxpy function is byte equivalent to the CBLAS
+-- implementation.  Vectors of length 1-10 are tested having elements that are
+-- in the range of approximately (epsilon/2,2/epsilon)
+saxpyTest :: String
+         -> (Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> V.Vector Float)
+         -> Gen Int
+         -> TestTree
+saxpyTest testname func genInc = testProperty testname $
+    -- Choose the length of the vector
+    forAll (choose (1,100)) $ \ n ->
+    forAll genNiceFloat $ \ a ->
+    -- Randomly generate a vector of the chosen length
+    forAll (genInc `suchThat` (/=0))$ \ incx ->
+    forAll (genInc `suchThat` (/=0)) $ \ incy ->
+    forAll (choose (1,100)) $ \ mx ->
+    forAll (choose (1,100)) $ \ my ->
+    forAll (genNVector genNiceFloat (mx+(n-1)*abs incx )) $ \ u ->
+    forAll (genNVector genNiceFloat (my+(n-1)*abs incy )) $ \ v ->
+       ioProperty $ do
+           expected <- Fortran.saxpy n a u incx v incy
+           let observed = func n a u incx v incy
            runTest expected observed

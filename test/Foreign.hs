@@ -5,7 +5,7 @@
 module Foreign(
     isamax,isamax_unsafe,
     sasum,sasum_unsafe,
---    saxpy,
+    saxpy,saxpy_unsafe,
     scopy,scopy_unsafe,
     sdsdot,sdsdot_unsafe,
     sdot,sdot_unsafe,
@@ -33,8 +33,8 @@ foreign import ccall "isamax_" isamax_foreign :: Ptr Int -> Ptr Float -> Ptr Int
 foreign import ccall unsafe "isamax_" isamax_unsafe_ :: Ptr Int -> Ptr Float -> Ptr Int -> IO Int
 foreign import ccall "sasum_"  sasum_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall unsafe "sasum_" sasum_unsafe_  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
---foreign import ccall "saxpy_"  saxpy_foreign  :: Ptr Int -> Ptr Float ->  Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
---foreign import ccall "scnrm2_" scnrm2_foreign :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
+foreign import ccall        "saxpy_"  saxpy_foreign  :: Ptr Int -> Ptr Float ->  Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
+foreign import ccall unsafe "saxpy_"  saxpy_unsafe_  :: Ptr Int -> Ptr Float ->  Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
 foreign import ccall        "scopy_"  scopy_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
 foreign import ccall unsafe "scopy_"  scopy_unsafe_  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
 foreign import ccall "sdot_"   sdot_foreign   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
@@ -139,6 +139,27 @@ srotHelper f n u incx v incy c s =
         ys <- V.unsafeFreeze $ V.MVector sy fptry
         return (xs, ys)
 
+-- Foreign call to saxpy function.
+-- please see <http://www.netlib.org/lapack/explore-html/df/d28/group__single__blas__level1_ga2f65d66137ddaeb7ae93fcc4902de3fc.html#ga2f65d66137ddaeb7ae93fcc4902de3fc>
+saxpy :: Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float)
+saxpy  = saxpyHelper saxpy_foreign
+saxpy_unsafe :: Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float)
+saxpy_unsafe = saxpyHelper saxpy_unsafe_
+saxpyHelper :: (Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ())
+   -> Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float)
+saxpyHelper f n a u incx v incy =
+    alloca $ \ pn ->
+    alloca $ \ pincx ->
+    alloca $ \ pincy ->
+    alloca $ \ pa -> do
+        poke pn n
+        poke pincx incx
+        poke pincy incy
+        poke pa a
+        V.MVector _ fptrx <- V.unsafeThaw u
+        V.MVector sy  fptry <- V.thaw v
+        f pn pa (getPtr fptrx) pincx (getPtr fptry) pincy
+        V.unsafeFreeze $ V.MVector sy fptry
 
 -- Setup a modified Givens rotation.
 -- please see <http://www.netlib.org/lapack/explore-html/df/d28/group__single__blas__level1_ga2f65d66137ddaeb7ae93fcc4902de3fc.html#ga2f65d66137ddaeb7ae93fcc4902de3fc>
