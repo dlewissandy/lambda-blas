@@ -10,7 +10,7 @@ module Foreign(
     sdsdot,sdsdot_unsafe,
     sdot,sdot_unsafe,
     snrm2,snrm2_unsafe,
---    srot,
+    srot,srot_unsafe,
     srotg,
     srotg_unsafe,
 --    srotm,
@@ -43,7 +43,8 @@ foreign import ccall        "sdsdot_" sdsdot_foreign :: Ptr Int -> Ptr Float -> 
 foreign import ccall unsafe "sdsdot_" sdsdot_unsafe_ :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall "snrm2_"   snrm2_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall unsafe "snrm2_"  snrm2_unsafe_  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
---foreign import ccall "srot_"   srot_foreign   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Float -> IO ()
+foreign import ccall        "srot_"   srot_foreign   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Float -> IO ()
+foreign import ccall unsafe "srot_"   srot_unsafe_   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Float -> IO ()
 foreign import ccall "srotg_"  srotg_foreign  :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
 foreign import ccall unsafe "srotg_" srotg_unsafe_ :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
 --foreign import ccall "srotm_"  srotm_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> IO ()
@@ -111,6 +112,33 @@ srotg :: Float -> Float -> IO (GivensRot Float)
 srotg sa sb         = ffgivens_foreign srotg_foreign sa sb
 srotg_unsafe :: Float -> Float -> IO (GivensRot Float)
 srotg_unsafe sa sb  = ffgivens_foreign srotg_unsafe_ sa sb
+
+-- Setup a modified Givens rotation.
+-- please see <http://www.netlib.org/lapack/explore-html/df/d28/group__single__blas__level1_ga2f65d66137ddaeb7ae93fcc4902de3fc.html#ga2f65d66137ddaeb7ae93fcc4902de3fc>
+srot :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float -> Float -> IO (V.Vector Float, V.Vector Float)
+srot  = srotHelper srot_foreign
+srot_unsafe :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float -> Float -> IO (V.Vector Float, V.Vector Float)
+srot_unsafe = srotHelper srot_unsafe_
+srotHelper :: (Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Float -> IO ())
+   -> Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float -> Float -> IO (V.Vector Float, V.Vector Float)
+srotHelper f n u incx v incy c s =
+    alloca $ \ pn ->
+    alloca $ \ pincx ->
+    alloca $ \ pincy ->
+    alloca $ \ pc ->
+    alloca $ \ ps -> do
+        poke pn n
+        poke pincx incx
+        poke pincy incy
+        poke pc c
+        poke ps s
+        V.MVector sx fptrx <- V.thaw u
+        V.MVector sy fptry <- V.thaw v
+        f pn (getPtr fptrx) pincx (getPtr fptry) pincy pc ps
+        xs <- V.unsafeFreeze $ V.MVector sx fptrx
+        ys <- V.unsafeFreeze $ V.MVector sy fptry
+        return (xs, ys)
+
 
 -- Setup a modified Givens rotation.
 -- please see <http://www.netlib.org/lapack/explore-html/df/d28/group__single__blas__level1_ga2f65d66137ddaeb7ae93fcc4902de3fc.html#ga2f65d66137ddaeb7ae93fcc4902de3fc>
