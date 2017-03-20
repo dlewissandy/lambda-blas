@@ -37,6 +37,8 @@ library
     Numerical.BLAS
     Numerical.BLAS.Single
     Numerical.BLAS.Types
+  other-modules:
+    Numerical.BLAS.Util
   -- other-extensions:
   build-depends:       base >=4.9 && <4.10,
                        primitive, ghc-prim,

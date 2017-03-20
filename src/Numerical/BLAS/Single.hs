@@ -6,15 +6,13 @@
 -- single precision floating point numbers.
 module Numerical.BLAS.Single(
    isamax,
-   sdot_zip,
-   sdot_list,
-   sdot_stream,
    sdot,
    sasum,
    snrm2,
    sdsdot,
    srot,
    srotg,
+   srotm,
    srotmg,
    sscal,
    scopy,
@@ -23,25 +21,12 @@ module Numerical.BLAS.Single(
     ) where
 
 import Numerical.BLAS.Types
+import Numerical.BLAS.Util
 
 import Data.Vector.Storable(Vector)
 import qualified Data.Vector.Storable as V
-import Data.Vector.Fusion.Bundle.Size(Size(..))
-import Data.Vector.Fusion.Bundle.Monadic(fromStream)
-import Data.Vector.Fusion.Stream.Monadic(Stream(..),Step(..))
-import Data.Vector.Generic(unstream)
-import GHC.Exts
-import Data.List
 
-{- | O(n) compute the dot product of two vectors using zip and fold
--}
-sdot_zip :: Int
-    -> Vector Float -- ^ The vector u
-    -> Vector Float      -- ^ The vector v
-    -> Float             -- ^ The dot product u . v
-sdot_zip !n u = V.foldl' (+) 0 . V.unsafeTake n . V.zipWith (*) u
-
-{- | O(n) sdot_list function computes the sum of the products of elements
+{- | O(n) sdot function computes the sum of the products of elements
    drawn from two vectors according to the following specification:
 
 @
@@ -58,163 +43,12 @@ sdot_zip !n u = V.foldl' (+) 0 . V.unsafeTake n . V.zipWith (*) u
   are unity and n is the length of both vectors then sdot corresponds to the dot
   product of two vectors.
 
-  This function is semantically equivalent to the "sdot" and "sdot_stream"
-  functions, but has been written using build/fold fusion.
 -}
-
-sdot_list :: Int
-    -> [Float] -- ^ The vector u
-    -> Int
-    -> [Float]      -- ^ The vector v
-    -> Int
-    -> Float             -- ^ The dot product u . v
-sdot_list !n u !incx v !incy =
-    case compare incx 0 of
-        GT -> case compare incy 0 of
-            GT -> if (incx*incy==1)
-                    then foldl' (+) 0 $ take n $ zipWith (*) u v
-                    else foldl' (+) 0 $ getProds u v
-            LT -> foldl' (+) 0 $ getProds u vs'
-            _ -> foldl' (+) 0 $ getProds u (replicate n v0)
-        LT -> case compare incy 0 of
-            LT -> if (incx*incy==1)
-                    then foldr (+) 0 $ take n $ zipWith (*) u v
-                    else foldr (+) 0 $ getProds u v
-            GT -> foldl' (+) 0 $ getProds us' v
-            _  -> foldl' (+) 0 $ getProds us' (replicate n v0)
-        _ -> case compare incy 0 of
-            LT -> foldr (+) 0 $ getProds (replicate n u0) v
-            GT -> foldl' (+) 0 $ getProds (replicate n u0) v
-            EQ -> foldl' (+) 0 $ replicate n (u0*v0)
-    where
-        aincx = abs incx
-        aincy = abs incy
-        u0 = head u
-        v0 = head v
-        us'= reverse $ take (1+(n-1)*aincx) u
-        vs'= reverse $ take (1+(n-1)*aincy) v
-        {-# INLINE getProds #-}
-        getProds xx yy = build (\ c b ->
-            let go !i xs ys
-                    | i==n = b
-                    | otherwise =
-                        let x=head xs
-                            y=head ys
-                            xy = x*y
-                        in  c xy $! go (i+1) (drop aincx xs) (drop aincy ys)
-            in  go 0 xx yy)
-
-{- | O(n) sdot_stream function computes the sum of the products of elements
-   drawn from two vectors according to the following specification:
-
-@
-   sdot n u incx v incy = sum { u[f incx k] * v[f incy k] | k<=[0..n-1] }
-   where
-   f inc k | inc > 0  = inc * k
-           | inc < 0  = (1-n+k)*inc
-@
-
-  The elements selected from the two vectors are controlled by the parameters
-  n, incx and incy.   The parameter n determines the number of summands, while
-  the parameters incx and incy determine the spacing between selected elements
-  and the direction which the vectors are traversed.  When both incx and incy
-  are unity and n is the length of both vectors then sdot corresponds to the dot
-  product of two vectors.
-
-  This function is semantically equivalent to the "sdot" and "sdot_list"
-  functions, but has been written using stream fusion to produce efficient,
-  beutiful code.
--}
-sdot_stream :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float
-sdot_stream !n u !incx v !incy =
-    case compare incx 0 of
-        GT -> case compare incy 0 of
-            GT -> sumprods xs ys
-            LT -> sumprods xs ys'
-            EQ -> V.foldl' (+) 0 $ V.map (* v0) xs
-        LT -> case compare incy 0 of
-            LT -> sumprods xs' ys'
-            GT -> sumprods xs' ys
-            EQ -> V.foldl' (+) 0 $ V.map (* v0) xs'
-        EQ -> case compare incy 0 of
-            LT -> V.foldl' (+) 0 $ V.map (* u0) ys'
-            GT -> V.foldl' (+) 0 $ V.map (* u0) ys
-            EQ -> V.foldl' (+) 0 $ V.replicate n (v0*u0)
-    where
-        {-# INLINE sumprods #-}
-        sumprods x = V.foldl' (+) 0 . V.zipWith (*) x
-        xs  = sample n u incx
-        ys  = sample n v incy
-        xs' = samplerev n u incx
-        ys' = samplerev n v incy
-        v0  = v `V.unsafeIndex` 0
-        u0  = u `V.unsafeIndex` 0
+sdot :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float
+sdot !n sx !incx sy !incy = V.foldl' (+) 0
+    $ V.zipWith (*) (sampleElems n sx incx) $ sampleElems n sy incy
 
 
-{- | O(n) sdot computes the sum of the products of elements drawn from two
-   vectors according to the following specification:
-
-@
-   sdot n u incx v incy = sum { u[f incx k] * v[f incy k] | k<=[0..n-1] }
-   where
-   f inc k | inc > 0  = inc * k
-           | inc < 0  = (1-n+k)*inc
-@
-
-  The elements selected from the two vectors are controlled by the parameters
-  n, incx and incy.   The parameter n determines the number of summands, while
-  the parameters incx and incy determine the spacing between selected elements
-  and the direction which the vectors are traversed.  When both incx and incy
-  are unity and n is the length of both vectors then
-  sdot corresponds to the dot product of two vectors.
-
-  This function is semantically equivalent to the "sdot_stream" and "sdot_list"
-  functions, but faithfully implements the loop unrolling strategy used by
-  the FORTRAN implementation.
--}
-sdot :: Int -- ^ The number of summands
-    -> Vector Float -- ^ the vector u
-    -> Int          -- ^ the space between elements drawn from u
-    -> Vector Float -- ^ the vector v
-    -> Int          -- ^ the space between elements drawn from v
-    -> Float        -- ^ The sum of the product of the elements.
-sdot n sx incx sy incy
-   | incx /=1 || incy /= 1  = sumProdsInc
-   | n < 5     = sumprods 0 0
-   | m == 0    = unrolled 0 0
-   | otherwise =
-        let subtotal = sumprods 0 0
-        in  unrolled subtotal m
-    where
-        m :: Int
-        m = n `mod` 5
-        {-# INLINE sumprods #-}
-        sumprods !c !i
-            | i < m  = sumprods (c + sx `V.unsafeIndex` i * sy `V.unsafeIndex` i) (i+1)
-            | otherwise = c
-        {-# INLINE sumProdsInc #-}
-        sumProdsInc = sumprodloop 0 0 (firstIndex n incx) (firstIndex n incy)
-           where
-               {-# INLINE sumprodloop #-}
-               sumprodloop !c !k !i !j
-                  | k < n = sumprodloop (c + sx `V.unsafeIndex` i * sy`V.unsafeIndex`j) (k+1) (i+incx) (j+incy)
-                  | otherwise = c
-        -- hyloL :: ( a -> Maybe (b,a)) -> (c -> b -> c) -> c -> a -> c
-        {-# INLINE [1] unrolled #-}
-        unrolled !c !i
-           | i>=n = c
-           | otherwise =
-               let i'  = i+5
-                   i1  = i+1
-                   i2  = i+2
-                   i3  = i+3
-                   i4  = i+4
-                   c'  = c + (sx `V.unsafeIndex` i)*(sy `V.unsafeIndex` i)
-                       + (sx `V.unsafeIndex` i1)*(sy `V.unsafeIndex` i1)
-                       + (sx `V.unsafeIndex` i2)*(sy `V.unsafeIndex` i2)
-                       + (sx `V.unsafeIndex` i3)*(sy `V.unsafeIndex` i3)
-                       + (sx `V.unsafeIndex` i4)*(sy `V.unsafeIndex` i4)
-               in  unrolled c' i'
 -- O(1) - Compute the starting index of an iterative vector traversal
 -- given the length of the vector and the iterative step size.
 firstIndex :: Int -> Int -- ^ the iterative step
@@ -246,13 +80,10 @@ according to the following specification:
 @
 -}
 sscal :: Int -> Float -> V.Vector Float -> Int -> V.Vector Float
-sscal n a u incx =
-   case n<1 of
-       True -> u
-       False -> case compare incx 1 of
-           LT -> u
-           EQ -> let (l,r) = V.splitAt n u in V.map (*a) l V.++ r
-           GT -> V.unsafeUpdate_ u (sampleIndices n incx) (V.map (*a) $ sample n u incx)
+sscal n a sx incx =
+    V.unsafeUpdate_ sx (sampleIndices n incx )
+    $ V.map (*a)
+    $ sampleElems n sx incx
 
 {- | O(n) copy n elements from one vector into another according to the
 following specification
@@ -279,14 +110,7 @@ following specification
 @
 -}
 scopy :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> V.Vector Float
-scopy n src incs dst incd = copyHelper' sdsd aincs aincd ixs ixd ixd' n src incs dst
-    where
-    aincs = abs incs
-    aincd = abs incd
-    sdsd  = (signum incs)*incd
-    ixd = sampleIndices n aincd
-    ixd' = sampleIndicesRev n (-aincd)
-    ixs = sampleIndices n aincs
+scopy n sx incx sy incy = updateElems (\ _ x -> x ) n sy incy sx incx
 
 {- | O(n) swap n elements between two vectors according to the following
 specification:
@@ -308,78 +132,15 @@ specification:
 @
 -}
 sswap :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> (V.Vector Float, V.Vector Float)
-sswap n src incs dst incd =
-    ( copyHelper' sdsd aincd aincs ixd ixs ixs' n dst incd src
-    , copyHelper' sdsd aincs aincd ixs ixd ixd' n src incs dst )
-    where
-    aincs = abs incs
-    aincd = abs incd
-    sdsd  = (signum incs)*incd
-    ixd  = sampleIndices n aincd
-    ixd' = sampleIndicesRev n (-aincd)
-    ixs  = sampleIndices n aincs
-    ixs' = sampleIndicesRev n (-aincs)
-
-
--- | O(n) -- This helper function copies the elements from one vector into
--- another.  The first six arguments are somewhat expensive to generate, and
--- can be amortized over other copies (for example in the swap function).
--- NOTE: This helper funciton is not exported.
-copyHelper' :: (V.Storable a)
-   => Int -- ^ the sign of the product of two increments
-   -> Int -- ^ the absolute value of the increment for the source vector
-   -> Int -- ^ the absolute value of the increment for the destination vector
-   -> V.Vector Int -- ^ the indices to copy from the source vector
-   -> V.Vector Int -- ^ the indices to modify in the destination vector
-   -> V.Vector Int -- ^ the indices to modify in the destination vector (in reverse)
-   -> Int -- ^ The number of elements to copy
-   -> V.Vector a -- ^ The source vector
-   -> Int        -- ^ The increment used for the source vector
-   -> V.Vector a -- ^ The destination vector
-   -> V.Vector a
-{-# INLINE copyHelper' #-}
-copyHelper' sdsd aincs aincd ixs ixd ixd' n src incs dst =
-    case compare sdsd 0 of
-        -- when incx * incy is negative, then the two vectors are being traversed
-        -- in opposite directions.
-        LT -> case aincs of
-            1 -> case aincd of
-                1 -> (V.reverse ys) V.++ rs
-                _ -> V.unsafeUpdate_ dst ixd' ys
-            _ -> case aincd of
-                1 -> (V.reverse zs) V.++ rs
-                _ -> V.unsafeUpdate_ dst ixd' zs
-        -- When incx * incy is zero, then at least one of the vectors is not
-        -- traversed.  Either the replacement will consist of the same element
-        -- being replicated into multiple destinations, or multiple elements
-        -- will be (destructively) written to the same destination
-        EQ -> case aincd of
-            0 -> case incs > 0 of
-                True  -> V.cons (V.last zs) $ V.tail dst
-                False -> V.cons src0 $ V.tail dst
-            1 -> V.replicate n src0 V.++ rs
-            _ -> V.unsafeUpdate_ dst ixd (V.replicate n src0)
-        -- when incx * incy is positive, the two vectors are being traversed
-        -- in the same direction.
-        GT -> case aincs of
-            1 -> case aincd of
-                1 -> ys V.++ rs
-                _ -> V.unsafeUpdate_ dst ixd ys
-            _ -> case aincd of
-                1 -> zs V.++ rs
-                _ -> V.unsafeUpdate_ dst ixd zs
-    where
---  distinct to this instance
-    rs = V.unsafeDrop ((n-1)*aincd+1) dst
-    ys = V.unsafeTake n src
-    zs = sampleElems src ixs
-    src0 = V.unsafeIndex src 0
+sswap n sx incx sy incy =
+    ( updateElems (\ _ y -> y ) n sx incx sy incy
+    , updateElems (\ _ x -> x ) n sy incy sx incx )
 
 {- | O(n) sasum computes the sum of the absolute value of elements drawn a
   vector according to the following specification
 
 @
-   sdot n u incx = sum { abs u[i*incx]   | i<=[0..n-1] }
+   sasum n u incx = sum { abs u[i*incx]   | i<=[0..n-1] }
 @
 
   The elements selected from the vector are controlled by the parameters
@@ -582,81 +343,6 @@ sdsdot n (floatToDouble -> sb) sx !incx sy !incy
            in  whenUnequalOrNegIncs (i+1) c' (kx+incx) (ky+incy)
 
 
---- UTILITIES --
--- Move these to an appropriate module
-
-floatToDouble :: Float -> Double
-{-# INLINE floatToDouble #-}
-floatToDouble (F# f) = case float2Double# f of
-    d -> D# d
-
-doubleToFloat :: Double -> Float
-{-# INLINE doubleToFloat #-}
-doubleToFloat (D# d) = case double2Float# d of
-    f -> F# f
-
--- | O(n), downstream fusable.   Sample a vector in even intevals, collecting the
--- first n elements into a vector according to the following specification:
---
--- @
--- sample n u inc = fromList [ u!(i*incx) | i<-[0..n-1]]
--- @
--- The vector must have at least (n-1)*inc elements in it.  This condition is
--- not checked, and must be verified by the calling program
-sample :: Int -> V.Vector Float -> Int -> V.Vector Float
-{-# INLINE sample #-}
-sample !n u !inc = sampleElems u $ sampleIndices n inc
-
--- | O(n), fusable.   Return a subvector containing only the specified
--- indices form the original vector.
-sampleElems :: (V.Storable a)=> V.Vector a -> V.Vector Int -> V.Vector a
-{-# INLINE sampleElems #-}
-sampleElems u = V.map (\ i -> u `V.unsafeIndex` i )
-
--- | O(n), downstream fusable.   Sample a vector in even intevals, collecting the
--- first n elements into a vector according to the following specification:
---
--- @
--- sample n u inc = fromList [ u!(i*incx) | i<-[0..n-1]]
--- @
--- The vector must have at least (n-1)*inc elements in it.  This condition is
--- not checked, and must be verified by the calling program
-sampleIndices :: Int -> Int -> V.Vector Int
-{-# INLINE sampleIndices #-}
-sampleIndices !n !inc = unstream $ fromStream (Stream go 0) (Exact n)
-    where
-    go !ix
-       | ix > imax = return Done
-       | otherwise = return $ Yield ix (ix+inc)
-    imax = (n-1)*inc
-
--- | O(n), downstream fusable.   Sample a vector in even intevals, collecting the
--- first n elements into a vector according to the following specification:
---
--- @
--- sample n u inc = fromList $ reverse [ u!(i*incx) | i<-[0..n-1]]
--- @
--- The vector must have at least (n-1)*inc elements in it.  This condition is
--- not checked, and must be verified by the calling program
-samplerev :: Int -> V.Vector Float -> Int -> V.Vector Float
-{-# INLINE samplerev #-}
-samplerev !n u !inc = sampleElems u $ sampleIndicesRev n inc
-
--- | O(n), downstream fusable.   A list of indices sampled in uniform increments
--- but in reverse order
---
--- @
--- sample n u inc = fromList $ reverse [ (i*incx) | i<-[0..n-1]]
--- @
-sampleIndicesRev :: Int -> Int -> V.Vector Int
-{-# INLINE sampleIndicesRev #-}
-sampleIndicesRev !n !inc = unstream $ fromStream (Stream go ((1-n)*inc)) (Exact n)
-    where
-    go !ix
-       | ix < 0    = return Done
-       | otherwise = return $ Yield ix (ix+inc)
-
-
 {- | O(1) Construct a plane Givens rotation on a deconstructed two-vector.
 Specifically:
 
@@ -793,79 +479,14 @@ checkscale = checkscale2 . checkscale1
 -}
 srot :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float -> Float -> (V.Vector Float, V.Vector Float)
 srot n u incx v incy c s =
-    ( combineWith (\ x y -> c*x + s*y) n u incx v incy
-    , combineWith (\ y x -> c*y - s*x) n v incy u incx )
+    ( updateElems (\ x y -> c*x + s*y) n u incx v incy
+    , updateElems (\ y x -> c*y - s*x) n v incy u incx )
 
-{-  This utility function combines two vectors according to the following
-   specification:
-@
-forall n in N\0
-       incx, incy in Z\0
-       mx in {(n-1)*abs incx,(n-1)*abs incx+1,..}
-       my in {(n-1)*abs incy,(n-1)*abs incy+1,..}
-       f  in R->R->R
-       u  in R^mx
-       v  in R^my
-       i  in {0..n-1}
-       j  in {0..mx-1}
-(combineWith f n u incx v incy)!j = case (i*abs incx) == j of
-    False -> u!j
-    True  -> f (u!j) (v!k)
-    where
-        k | signum incx == signum incy = i*abs incy
-          | otherwise                  = (n-1-i)*abs incy
-@
-
-This function is used to apply the Givens rotations, and modified Givens
-rotations.
--}
-combineWith
-    :: ( Float -> Float -> Float )
-    -> Int
-    -> V.Vector Float
-    -> Int
-    -> V.Vector Float
-    -> Int
-    -> V.Vector Float
-{-# INLINE combineWith #-}
-combineWith f n u incx v incy =
-    case n of
-        0 -> u
-        _ -> case compare incx 0  of
-            GT -> case incx of
-                1 -> case compare incy 0 of
-                    GT -> V.unsafeUpdate_ u ixs $ V.zipWith f (V.unsafeTake n u) ys
-                    EQ -> V.unsafeUpdate_ u ixs $ V.map (`f` v0) $ V.unsafeTake n u
-                    LT -> V.unsafeUpdate_ u ixs $ V.zipWith f (V.unsafeTake n u) ys'
-                _ -> case compare incy 0 of
-                    GT -> V.unsafeUpdate_ u ixs $ V.zipWith f xs ys
-                    EQ -> V.unsafeUpdate_ u ixs $ V.map (`f` v0) xs
-                    LT -> V.unsafeUpdate_ u ixs $ V.zipWith f xs ys'
-            EQ -> case compare incy 0 of
-                GT -> V.unsafeUpd u [(0,f u0 vn)]
-                _ -> V.unsafeUpd u [(0,f u0 v0)]
-            LT -> case incx of
-                (-1) -> case compare incy 0 of
-                    GT -> V.unsafeUpdate_ u ixs $ V.zipWith f (V.unsafeTake n u) ys'
-                    EQ -> V.unsafeUpdate_ u ixs $ V.map (`f` v0) $ V.unsafeTake n u
-                    LT -> V.unsafeUpdate_ u ixs $ V.zipWith f (V.unsafeTake n u) ys
-                _    -> case compare incy 0 of
-                    GT -> V.unsafeUpdate_ u ixs $ V.zipWith f xs ys'
-                    EQ -> V.unsafeUpdate_ u ixs $ V.map (`f` v0) xs
-                    LT -> V.unsafeUpdate_ u ixs $ V.zipWith f xs ys
-    where
-        u0 = V.unsafeIndex u 0
-        v0 = V.unsafeIndex v 0
-        vn = V.unsafeIndex v ((n-1)*abs incy)
-        ixs = sampleIndices n $ abs incx
-        xs  = sample n u $ abs incx
-        ys  = sample n v $ abs incy
-        ys' = samplerev n v $ -abs incy
 
 {- | O(n) compute the linear combination of elements drawn from two vectors
 according to the following rule:
 
-saxpy n a sx incx sy incy = combineWith (\ x y -> y + a*x) n sy incy sx incx
+saxpy n a sx incx sy incy = updateElems (\ x y -> y + a*x) n sy incy sx incx
 
 The elements selected from the vector are controlled by the parameters
 n and incx.   The parameter n determines the number of elements, while
@@ -879,4 +500,50 @@ No bound checks are performed.   The calling program should ensure that:
 @
 -}
 saxpy :: Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> V.Vector Float
-saxpy n a sx incx sy incy = combineWith (\ y x -> y + a*x ) n sy incy sx incx
+saxpy n a sx incx sy incy = updateElems (\ y x -> y + a*x ) n sy incy sx incx
+
+{- | O(n) apply a modified Givens rotation to a pair of vectors according to
+the following specification:
+
+@
+srotm FLAGNEG2 n sx incx sy incy = (sx,sy)
+srotm (FLAGNEG1 h11 h12 h21 h22) n sx incx sy incy =
+   ( updateElems (\ x y -> h11*x + h12*y) n sx incx sy incy
+   , updateElems (\ y x -> h21*x + h22*y) n sy incy sx incx)
+srotm (FLAG0 h12 h21) n sx incx sy incy =
+   ( updateElems (\ x y -> x + h12*y) n sx incx sy incy
+   , updateElems (\ y x -> h21*x + y) n sy incy sx incx)
+srotm (FLAG1 h11 h22) n sx incx sy incy =
+   ( updateElems (\ x y -> h11*x + y) n sx incx sy incy
+   , updateElems (\ y x -> -x + h22*y) n sy incy sx incx)
+@
+The elements selected from the vector are controlled by the parameters
+n and incx.   The parameter n determines the number of elements, while
+the parameter incx determines the spacing between selected elements.
+
+No bound checks are performed.   The calling program should ensure that:
+
+@
+    length sx >= (1 + (n-1)abs incx)
+    length sy >= (1 + (n-1)abs incy)
+@
+-}
+srotm :: ModGivensRot Float
+    -> Int
+    -> V.Vector Float
+    -> Int
+    -> V.Vector Float
+    -> Int
+    -> ( V.Vector Float, V.Vector Float )
+{-# INLINE srotm #-}
+srotm flag !n sx !incx sy !incy = case flag of
+    FLAGNEG2 -> (sx,sy)
+    FLAGNEG1 _ _ _ sh11 sh12 sh21 sh22 ->
+        ( updateElems (\ x y -> sh11*x + sh12*y) n sx incx sy incy
+        , updateElems (\ y x -> sh21*x + sh22*y) n sy incy sx incx)
+    FLAG0 _ _ _ sh12 sh21 ->
+        ( updateElems (\ x y -> x + sh12*y) n sx incx sy incy
+        , updateElems (\ y x -> sh21*x + y) n sy incy sx incx)
+    FLAG1 _ _ _ sh11 sh22 ->
+        ( updateElems (\ x y -> sh11*x + y) n sx incx sy incy
+        , updateElems (\ y x -> -x + sh22*y) n sy incy sx incx)

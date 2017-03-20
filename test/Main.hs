@@ -1,3 +1,4 @@
+{-# LANGUAGE ViewPatterns #-}
 -- | This test suite performs unit tests to evidence the correctness of
 -- the native haskell implementations of BLAS subroutines.
 module Main( main ) where
@@ -27,12 +28,10 @@ tests = testGroup "BLAS"
     , genTests "Float"  (1::Float)  -- test the random number generators for IEEE Singles
     , testGroup "Level-1"
         [ dotTest "sdot" sdot (elements [-5..5])
-        , dotTest "sdot_list" (\ n u incx v incy -> sdot_list n (V.toList u) incx (V.toList v) incy) (elements [-5..5])
-        , dotTest "sdot_zip" (\ n u _ v _ -> sdot_zip n u v) (pure (1))
-        , dotTest "sdot_stream" sdot_stream (elements [-5..5])
         , sdsdotTest "sdsdot" sdsdot (elements [-5..5])
         , srotgTest "srotg" srotg
         , srotmgTest "srotmg" srotmg
+        , srotmTest "srotm" srotm (elements [-5..5] `suchThat` (/=0))
         , iviTest "sasum" sasum (Fortran.sasum) (elements [1..5])
         , iviTest "snrm2" snrm2 (Fortran.snrm2) (elements [1..5])
         , iviTest "isamax" (\ n u incx -> succ $ isamax n u incx ) (Fortran.isamax) (elements [1..5])
@@ -172,6 +171,28 @@ srotmgTest testname func = testProperty testname $
           expected <- Fortran.srotmg sd1 sd2 sx1 sy1
           let observed = func sd1 sd2 sx1 sy1
           runTest expected observed
+
+-- | Evidence that the native srotmg function is byte equivalent to the BLAS
+-- implementation.  Parameter values that are in the range of approximately
+-- +/-(epsilon/2,2/epsilon) are tested.
+srotmTest :: String -> (ModGivensRot Float -> Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> (V.Vector Float, V.Vector Float ) ) -> Gen Int -> TestTree
+srotmTest testname func genInc = testProperty testname $
+      forAll genNiceFloat $ \ sd1 ->
+      forAll genNiceFloat $ \ sd2 ->
+      forAll genNiceFloat $ \ sx1 ->
+      forAll genNiceFloat $ \ (srotmg sd1 sd2 sx1 -> flags ) ->
+      forAll (choose (1,100)) $ \ n ->
+      forAll (genInc `suchThat` (/=0)) $ \ incx ->
+      forAll (genInc `suchThat` (/=0)) $ \ incy ->
+      forAll (choose (1,100)) $ \ mx ->
+      forAll (choose (1,100)) $ \ my ->
+      forAll (genNVector genNiceFloat (mx+(n-1)*abs incx )) $ \ u ->
+      forAll (genNVector genNiceFloat (my+(n-1)*abs incy )) $ \ v ->
+         ioProperty $ do
+             let observed = func flags n u incx v incy
+             expected <- Fortran.srotm flags n u incx v incy
+             runTest expected observed
+
 
 
 -- | Evidence that the native a native haskell function and a FOTRAN function
@@ -376,9 +397,9 @@ scopyTest :: String
          -> TestTree
 scopyTest testname func genInc = testProperty testname $
     -- Choose the length of the vector
-    forAll (choose (1,100)) $ \ n ->
-    forAll (choose (1,100)) $ \ mx ->
-    forAll (choose (1,100)) $ \ my ->
+    forAll (choose (1,5)) $ \ n ->
+    forAll (choose (1,2)) $ \ mx ->
+    forAll (choose (1,2)) $ \ my ->
     -- Randomly generate a vector of the chosen length
     forAll genInc $ \ incx ->
     forAll genInc $ \ incy ->

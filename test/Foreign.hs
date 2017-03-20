@@ -11,9 +11,8 @@ module Foreign(
     sdot,sdot_unsafe,
     snrm2,snrm2_unsafe,
     srot,srot_unsafe,
-    srotg,
-    srotg_unsafe,
---    srotm,
+    srotg,srotg_unsafe,
+    srotm,srotm_unsafe,
     srotmg,srotmg_unsafe,
     sscal,sscal_unsafe,
     sswap,sswap_unsafe,
@@ -47,7 +46,8 @@ foreign import ccall        "srot_"   srot_foreign   :: Ptr Int -> Ptr Float -> 
 foreign import ccall unsafe "srot_"   srot_unsafe_   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Float -> IO ()
 foreign import ccall "srotg_"  srotg_foreign  :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
 foreign import ccall unsafe "srotg_" srotg_unsafe_ :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
---foreign import ccall "srotm_"  srotm_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> IO ()
+foreign import ccall        "srotm_"  srotm_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> IO ()
+foreign import ccall unsafe "srotm_"  srotm_unsafe_  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> IO ()
 foreign import ccall        "srotmg_" srotmg_foreign :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
 foreign import ccall unsafe "srotmg_" srotmg_unsafe_ :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
 foreign import ccall        "sscal_"  sscal_foreign  :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> IO ()
@@ -190,6 +190,35 @@ modGivensHelper f sd1 sd2 sx1 sy1 =
             0.0  -> FLAG0 {..}
             1.0  -> FLAG1 {..}
             _    -> error "unexpected parameter value returned from srotmg"
+
+-- Apply a modified Givens rotation.
+-- please see <http://www.netlib.org/lapack/explore-html/df/d28/group__single__blas__level1_ga2f65d66137ddaeb7ae93fcc4902de3fc.html#ga2f65d66137ddaeb7ae93fcc4902de3fc>
+srotm :: ModGivensRot Float -> Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float, V.Vector Float)
+srotm = srotmHelper srotm_foreign
+srotm_unsafe :: ModGivensRot Float -> Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float, V.Vector Float)
+srotm_unsafe = srotmHelper srotm_unsafe_
+srotmHelper :: (Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> IO ())
+    -> ModGivensRot Float -> Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float, V.Vector Float)
+{-# INLINE srotmHelper #-}
+srotmHelper f flags n sx incx sy incy =
+    alloca $ \ pn ->
+    alloca $ \ pincx ->
+    alloca $ \ pincy ->
+    allocaArray 5 $ \ pparms -> do
+        poke pn n
+        poke pincx incx
+        poke pincy incy
+        case flags of
+            FLAGNEG2 -> pokeArray pparms [-2.0,1.0,0.0,0.0,1.0]
+            FLAGNEG1{..} -> pokeArray pparms [-1.0,h11,h21,h12,h22]
+            FLAG0{..} -> pokeArray pparms [0.0,0.0,h21,h12,0.0]
+            FLAG1{..} -> pokeArray pparms [1.0,h11,0.0,0.0,h22]
+        V.MVector zx fptrx <- V.thaw sx
+        V.MVector zy fptry <- V.thaw sy
+        f pn (getPtr fptrx) pincx (getPtr fptry) pincy pparms
+        sx' <- V.freeze $ V.MVector zx fptrx
+        sy' <- V.freeze $ V.MVector zy fptry
+        return (sx',sy')
 
 -- | Call the FORTRAN implementation of the isamax function.   For details
 -- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
