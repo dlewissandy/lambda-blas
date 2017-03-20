@@ -39,6 +39,7 @@ tests = testGroup "BLAS"
         , sscalTest "sscal" sscal (elements [1..5])
         , scopyTest "scopy" scopy (elements [-5..5])
         , sswapTest "sswap" sswap (elements [-5..5])
+        , srotTest "srot" srot (elements [-5,5])
         ]
     ]
 
@@ -132,6 +133,28 @@ srotgTest testname func = testProperty testname $
           expected <- Fortran.srotg sa sb
           let observed = func sa sb
           runTest expected observed
+
+-- | Evidence that the native srotg function is byte equivalent to the BLAS
+-- implementation.  Parameter values that are in the range of approximately
+-- +/-(epsilon/2,2/epsilon) are tested.
+srotTest :: String -> ( Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float -> Float -> (V.Vector Float, V.Vector Float)) -> Gen Int -> TestTree
+srotTest testname func genInc = testProperty testname $
+    -- Choose the length of the vector
+    forAll (choose (1,100)) $ \ n ->
+    forAll genNiceFloat $ \ a ->
+    -- Randomly generate two vectors of the chosen length
+    forAll (genInc `suchThat` (/=0)) $ \ incx ->
+    forAll (genInc `suchThat` (/=0)) $ \ incy ->
+    forAll (genNVector genNiceFloat (1+(n-1)*abs incx )) $ \ u ->
+    forAll (genNVector genNiceFloat (1+(n-1)*abs incy )) $ \ v ->
+        -- monadically marshal the vectors into arrays for use with CBLAS
+        ioProperty $ do
+            let c = cos a
+            let s = sin a
+            -- compute the expected and observed values
+            expected <- Fortran.srot n u incx v incy c s
+            let observed = func n u incx v incy c s
+            runTest expected observed
 
 -- | Evidence that the native srotmg function is byte equivalent to the BLAS
 -- implementation.  Parameter values that are in the range of approximately

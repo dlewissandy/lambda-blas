@@ -41,6 +41,7 @@ level1_benchs n a u v us vs xs ys = bgroup "level-1"
     , sscal_benchs n a u
     , scopy_benchs n u v
     , sswap_benchs n u v
+    , srot_benchs n u v (cos a) (sin a)
     ]
 
 -- Benchmarks for the sdot function
@@ -108,6 +109,23 @@ scopy_benchs nmax u v = bgroup "scopy"
   benchIO f !n !inc = bench (showTestCase n inc) $
        nfIO $ f n (V.unsafeTake (1+(n-1)*inc) u) inc (V.unsafeTake (1+(n-1)*inc) v) inc
   showTestCase n inc = "scopy("++show n++",u,"++show inc++",v,"++show inc++")"
+
+-- | benchmarks for the srot function
+srot_benchs :: Int -> V.Vector Float -> V.Vector Float -> Float -> Float -> Benchmark
+srot_benchs nmax u v c s = bgroup "srot"
+  [ bgroup "stream"   [ benchPure srot n inc | (n,inc)<-cs]
+  , bgroup "unsafe"   [ benchIO FORTRAN.srot_unsafe n inc | (n,inc)<-cs]
+  , bgroup "safe"     [ benchIO FORTRAN.srot n inc | (n,inc)<-cs]
+  ]
+  where
+  ns = let zs = [1..9]++map (*10) zs in takeWhile (<nmax) zs
+  cs = [ (n,inc) | inc<-[1,10,100],n<-ns,(n-1)*inc<nmax]
+  benchPure f !n !inc = bench (showTestCase n inc) $
+          nf (\ (a,b,c',d,e,g,h) -> f a b c' d e g h) (n,V.unsafeTake (1+(n-1)*inc) u,inc,V.unsafeTake (1+(n-1)*inc) v,inc,c,s)
+  benchIO f !n !inc = bench (showTestCase n inc) $
+       nfIO $ f n (V.unsafeTake (1+(n-1)*inc) u) inc (V.unsafeTake (1+(n-1)*inc) v) inc c s
+  showTestCase n inc = "srot("++show n++",u,"++show inc++",v,"++show inc++",c,s)"
+
 
 -- | benchmarks for the sswap function
 sswap_benchs :: Int -> V.Vector Float -> V.Vector Float -> Benchmark

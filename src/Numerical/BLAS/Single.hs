@@ -13,6 +13,7 @@ module Numerical.BLAS.Single(
    sasum,
    snrm2,
    sdsdot,
+   srot,
    srotg,
    srotmg,
    sscal,
@@ -774,3 +775,88 @@ checkscale = checkscale2 . checkscale1
    checkA (f,sd1,sd2,sx1,sh11,sh12,sh21,sh22)
        | f==0      = ( -1, sd1, sd2, sx1, 1, sh12, sh21, 1 )
        | otherwise = ( -1, sd1, sd2, sx1, sh11, 1, -1, sh22 )
+
+
+{- | O(n) apply a Givens rotation to a pair of vectors
+
+  The elements selected from the vector are controlled by the parameters
+  n and incx.   The parameter n determines the number of elements, while
+  the parameter incx determines the spacing between selected elements.
+
+  No bound checks are performed.   The calling program should ensure that:
+
+@
+    length sx >= (1 + (n-1)abs incx)
+    length sy >= (1 + (n-1)abs incy)
+@
+-}
+srot :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float -> Float -> (V.Vector Float, V.Vector Float)
+srot n u incx v incy c s =
+    ( combineWith (\ x y -> c*x + s*y) n u incx v incy
+    , combineWith (\ y x -> c*y - s*x) n v incy u incx )
+
+{-  This utility function combines two vectors according to the following
+   specification:
+@
+forall n in N\0
+       incx, incy in Z\0
+       mx in {(n-1)*abs incx,(n-1)*abs incx+1,..}
+       my in {(n-1)*abs incy,(n-1)*abs incy+1,..}
+       f  in R->R->R
+       u  in R^mx
+       v  in R^my
+       i  in {0..n-1}
+       j  in {0..mx-1}
+(combineWith f n u incx v incy)!j = case (i*abs incx) == j of
+    False -> u!j
+    True  -> f (u!j) (v!k)
+    where
+        k | signum incx == signum incy = i*abs incy
+          | otherwise                  = (n-1-i)*abs incy
+@
+
+This function is used to apply the Givens rotations, and modified Givens
+rotations.
+-}
+combineWith
+    :: ( Float -> Float -> Float )
+    -> Int
+    -> V.Vector Float
+    -> Int
+    -> V.Vector Float
+    -> Int
+    -> V.Vector Float
+{-# INLINE combineWith #-}
+combineWith f n u incx v incy =
+    case n of
+        0 -> u
+        _ -> case compare incx 0  of
+            GT -> case incx of
+                1 -> case compare incy 0 of
+                    GT -> V.unsafeUpdate_ u ixs $ V.zipWith f (V.unsafeTake n u) ys
+                    EQ -> V.unsafeUpdate_ u ixs $ V.map (`f` v0) $ V.unsafeTake n u
+                    LT -> V.unsafeUpdate_ u ixs $ V.zipWith f (V.unsafeTake n u) ys'
+                _ -> case compare incy 0 of
+                    GT -> V.unsafeUpdate_ u ixs $ V.zipWith f xs ys
+                    EQ -> V.unsafeUpdate_ u ixs $ V.map (`f` v0) xs
+                    LT -> V.unsafeUpdate_ u ixs $ V.zipWith f xs ys'
+            EQ -> case compare incy 0 of
+                GT -> V.unsafeUpd u [(0,f u0 vn)]
+                _ -> V.unsafeUpd u [(0,f u0 v0)]
+            LT -> case incx of
+                (-1) -> case compare incy 0 of
+                    GT -> V.unsafeUpdate_ u ixs $ V.zipWith f (V.unsafeTake n u) ys'
+                    EQ -> V.unsafeUpdate_ u ixs $ V.map (`f` v0) $ V.unsafeTake n u
+                    LT -> V.unsafeUpdate_ u ixs $ V.zipWith f (V.unsafeTake n u) ys
+                _    -> case compare incy 0 of
+                    GT -> V.unsafeUpdate_ u ixs $ V.zipWith f xs ys'
+                    EQ -> V.unsafeUpdate_ u ixs $ V.map (`f` v0) xs
+                    LT -> V.unsafeUpdate_ u ixs $ V.zipWith f xs ys
+    where
+        u0 = V.unsafeIndex u 0
+        v0 = V.unsafeIndex v 0
+        vn = V.unsafeIndex v ((n-1)*abs incy)
+        ixs = sampleIndices n $ abs incx
+        xs  = sample n u $ abs incx
+        ys  = sample n v $ abs incy
+        ys' = samplerev n v $ -abs incy
