@@ -19,6 +19,7 @@ module Numerical.BLAS.Single(
    sscal,
    scopy,
    sswap,
+   saxpy,
     ) where
 
 import Numerical.BLAS.Types
@@ -860,3 +861,22 @@ combineWith f n u incx v incy =
         xs  = sample n u $ abs incx
         ys  = sample n v $ abs incy
         ys' = samplerev n v $ -abs incy
+
+{- | O(n) compute the linear combination of elements drawn from two vectors
+according to the following rule:
+
+saxpy n a sx incx sy incy = combineWith (\ x y -> y + a*x) n sy incy sx incx
+
+The elements selected from the vector are controlled by the parameters
+n and incx.   The parameter n determines the number of elements, while
+the parameter incx determines the spacing between selected elements.
+
+No bound checks are performed.   The calling program should ensure that:
+
+@
+    length sx >= (1 + (n-1)abs incx)
+    length sy >= (1 + (n-1)abs incy)
+@
+-}
+saxpy :: Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> V.Vector Float
+saxpy n a sx incx sy incy = combineWith (\ y x -> y + a*x ) n sy incy sx incx
