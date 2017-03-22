@@ -2,6 +2,7 @@
 -- full documentation consult <http://www.netlib.org/blas/>.
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE BangPatterns #-}
 module Foreign(
     isamax,isamax_unsafe,
     sasum,sasum_unsafe,
@@ -116,11 +117,14 @@ srotg_unsafe sa sb  = ffgivens_foreign srotg_unsafe_ sa sb
 -- Setup a modified Givens rotation.
 -- please see <http://www.netlib.org/lapack/explore-html/df/d28/group__single__blas__level1_ga2f65d66137ddaeb7ae93fcc4902de3fc.html#ga2f65d66137ddaeb7ae93fcc4902de3fc>
 srot :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float -> Float -> IO (V.Vector Float, V.Vector Float)
+{-# INLINE srot #-}
 srot  = srotHelper srot_foreign
 srot_unsafe :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float -> Float -> IO (V.Vector Float, V.Vector Float)
+{-# INLINE srot_unsafe #-}
 srot_unsafe = srotHelper srot_unsafe_
 srotHelper :: (Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Float -> IO ())
    -> Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float -> Float -> IO (V.Vector Float, V.Vector Float)
+{-# INLINE srotHelper #-}
 srotHelper f n u incx v incy c s =
     alloca $ \ pn ->
     alloca $ \ pincx ->
@@ -142,12 +146,15 @@ srotHelper f n u incx v incy c s =
 -- Foreign call to saxpy function.
 -- please see <http://www.netlib.org/lapack/explore-html/df/d28/group__single__blas__level1_ga2f65d66137ddaeb7ae93fcc4902de3fc.html#ga2f65d66137ddaeb7ae93fcc4902de3fc>
 saxpy :: Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float)
+{-# INLINE saxpy #-}
 saxpy  = saxpyHelper saxpy_foreign
 saxpy_unsafe :: Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float)
+{-# INLINE saxpy_unsafe #-}
 saxpy_unsafe = saxpyHelper saxpy_unsafe_
 saxpyHelper :: (Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ())
    -> Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO (V.Vector Float)
-saxpyHelper f n a u incx v incy =
+{-# INLINE saxpyHelper #-}
+saxpyHelper f !n !a sx !incx sy !incy =
     alloca $ \ pn ->
     alloca $ \ pincx ->
     alloca $ \ pincy ->
@@ -156,10 +163,10 @@ saxpyHelper f n a u incx v incy =
         poke pincx incx
         poke pincy incy
         poke pa a
-        V.MVector _ fptrx <- V.unsafeThaw u
-        V.MVector sy  fptry <- V.thaw v
+        V.MVector _ fptrx   <- V.unsafeThaw sx
+        V.MVector !zy fptry <- V.thaw sy
         f pn pa (getPtr fptrx) pincx (getPtr fptry) pincy
-        V.unsafeFreeze $ V.MVector sy fptry
+        V.unsafeFreeze $ V.MVector zy fptry
 
 -- Setup a modified Givens rotation.
 -- please see <http://www.netlib.org/lapack/explore-html/df/d28/group__single__blas__level1_ga2f65d66137ddaeb7ae93fcc4902de3fc.html#ga2f65d66137ddaeb7ae93fcc4902de3fc>
@@ -216,8 +223,8 @@ srotmHelper f flags n sx incx sy incy =
         V.MVector zx fptrx <- V.thaw sx
         V.MVector zy fptry <- V.thaw sy
         f pn (getPtr fptrx) pincx (getPtr fptry) pincy pparms
-        sx' <- V.freeze $ V.MVector zx fptrx
-        sy' <- V.freeze $ V.MVector zy fptry
+        sx' <- V.unsafeFreeze $ V.MVector zx fptrx
+        sy' <- V.unsafeFreeze $ V.MVector zy fptry
         return (sx',sy')
 
 -- | Call the FORTRAN implementation of the isamax function.   For details
