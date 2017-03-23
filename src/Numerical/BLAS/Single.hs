@@ -8,7 +8,7 @@ module Numerical.BLAS.Single(
    isamax,
    sdot,
    sasum,
-   snrm2,
+   snrm2,dnrm2,
    sdsdot,
    srot,
    rotg,srotg,drotg,
@@ -195,7 +195,7 @@ sasum n sx !incx
                       + (abs $ sx `V.unsafeIndex` i5)
               in  unrolled c' i'
 
-{- | O(n) sasum computes the sum of the squares of elements drawn a
+{- | O(n) snrm2 computes the sum of the squares of elements drawn a
 vector according to the following specification
 
 @
@@ -216,24 +216,49 @@ No bound checks are performed.   The calling program should ensure that:
   length u >= (1 + (n-1)*abs(incx))
 @
 -}
-snrm2 :: Int -- ^ The number of summands
- -> Vector Float -- ^ the vector u
+snrm2 :: Int -> Vector Float -> Int -> Float
+snrm2 = nrm2
+{- | O(n) dnrm2 computes the sum of the squares of elements drawn a
+vector according to the following specification
+
+@
+ dnrm2 n u incx = sum { u[i*incx] ^2   | i<=[0..n-1] }
+@
+
+The elements selected from the vector are controlled by the parameters
+n and incx.   The parameter n determines the number of summands, while
+the parameter incx determines the spacing between selected elements.
+
+Note: The BLAS implementation computes the scaled sum of squares such that
+1.0 < ssq < 2*n and scale is the maximum of either 1.0 or the largest absolute
+value of the elments of u.
+
+No bound checks are performed.   The calling program should ensure that:
+
+@
+  length u >= (1 + (n-1)*abs(incx))
+@
+-}
+dnrm2 :: Int -> Vector Double -> Int -> Double
+dnrm2 = nrm2
+nrm2 :: (Floating a, Ord a, V.Storable a)
+ => Int -- ^ The number of summands
+ -> Vector a -- ^ the vector u
  -> Int          -- ^ the space between elements drawn from u
- -> Float        -- ^ The l2 norm of the vector u
-snrm2 !n sx !incx
+ -> a        -- ^ The l2 norm of the vector u
+{-# INLINE nrm2 #-}
+nrm2 !n sx !incx
     | n<1 || incx<1 = 0.0
     | n==1          = abs $ sx `V.unsafeIndex` 0
     | otherwise     = slassq (incx*(n-1))
     where
     slassq !imax = slassq_loop 0 0.0 1.0
         where
-        slassq_loop :: Int -> Float -> Float -> Float
         {-# INLINE slassq_loop #-}
         slassq_loop !i !scale !ssq
             | i > imax = scale*sqrt ssq
             | otherwise =
                 let xi = sx `V.unsafeIndex` i
-                    f:: Float -> Float
                     {-# INLINE f #-}
                     f x = case scale < x of
                         True  -> slassq_loop (i+incx) x (1.0 + ssq * (scale/x)^(2::Int))

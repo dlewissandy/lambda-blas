@@ -31,9 +31,10 @@ tests = testGroup "BLAS"
         , rotgTest "drotg" genNiceDouble Fortran.drotg drotg
         , srotmgTest "srotmg" srotmg
         , srotmTest "srotm" srotm (elements [-5..5] `suchThat` (/=0))
-        , iviTest "sasum" sasum (Fortran.sasum) (elements [1..5])
-        , iviTest "snrm2" snrm2 (Fortran.snrm2) (elements [1..5])
-        , iviTest "isamax" (\ n u incx -> succ $ isamax n u incx ) (Fortran.isamax) (elements [1..5])
+        , iviTest "sasum" sasum (Fortran.sasum) genNiceFloat (elements [1..5])
+        , iviTest "snrm2" snrm2 (Fortran.snrm2) genNiceFloat (elements [1..5])
+        , iviTest "dnrm2" dnrm2 (Fortran.dnrm2) genNiceDouble (elements [1..5])
+        , iviTest "isamax" (\ n u incx -> succ $ isamax n u incx ) (Fortran.isamax) genNiceFloat (elements [1..5])
         , sscalTest "sscal" sscal (elements [1..5])
         , scopyTest "scopy" scopy (elements [-5..5])
         , sswapTest "sswap" sswap (elements [-5..5])
@@ -203,17 +204,19 @@ srotmTest testname func genInc = testProperty testname $
 --
 -- produce byte equivalent to the results.   Vectors of length 1-10 are tested
 -- having elements that are in the range of approximately (epsilon/2,2/epsilon)
-iviTest :: (Eq a, Show a) => String
-        -> (Int -> V.Vector Float -> Int -> a)
-        -> (Int -> V.Vector Float -> Int -> IO a)
+iviTest :: (Eq a, Show a, V.Storable b, Show b)
+        => String
+        -> (Int -> V.Vector b -> Int -> a)
+        -> (Int -> V.Vector b -> Int -> IO a)
+        -> Gen b
         -> Gen Int
         -> TestTree
-iviTest testname func funcIO genInc = testProperty testname $
+iviTest testname func funcIO gen genInc = testProperty testname $
    -- Choose the length of the vector
    forAll (choose (0,100)) $ \ n ->
    -- Randomly generate two vectors of the chosen length
    forAll (genInc) $ \ incx ->
-   forAll (genNVector (genNiceFloat) (1+(n-1)*abs incx )) $ \ u ->
+   forAll (genNVector gen (1+(n-1)*abs incx )) $ \ u ->
    -- monadically marshal the vectors into arrays for use with CBLAS
       ioProperty $ do
           -- compute the expected and observed values

@@ -4,13 +4,13 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE BangPatterns #-}
 module Foreign(
-    isamax,isamax_unsafe,
-    sasum,sasum_unsafe,
+    isamax,isamax_unsafe,idamax,idamax_unsafe,
+    sasum,sasum_unsafe,dasum,dasum_unsafe,
     saxpy,saxpy_unsafe,
     scopy,scopy_unsafe,
     sdsdot,sdsdot_unsafe,
     sdot,sdot_unsafe,
-    snrm2,snrm2_unsafe,
+    snrm2,snrm2_unsafe,dnrm2,dnrm2_unsafe,
     srot,srot_unsafe,
     srotg,srotg_unsafe,
     srotm,srotm_unsafe,
@@ -32,8 +32,12 @@ import Foreign.Storable
 
 foreign import ccall "isamax_" isamax_foreign :: Ptr Int -> Ptr Float -> Ptr Int -> IO Int
 foreign import ccall unsafe "isamax_" isamax_unsafe_ :: Ptr Int -> Ptr Float -> Ptr Int -> IO Int
+foreign import ccall        "idamax_" idamax_foreign :: Ptr Int -> Ptr Double -> Ptr Int -> IO Int
+foreign import ccall unsafe "idamax_" idamax_unsafe_ :: Ptr Int -> Ptr Double -> Ptr Int -> IO Int
 foreign import ccall "sasum_"  sasum_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall unsafe "sasum_" sasum_unsafe_  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
+foreign import ccall        "dasum_" dasum_foreign  :: Ptr Int -> Ptr Double -> Ptr Int -> IO Double
+foreign import ccall unsafe "dasum_" dasum_unsafe_  :: Ptr Int -> Ptr Double -> Ptr Int -> IO Double
 foreign import ccall        "saxpy_"  saxpy_foreign  :: Ptr Int -> Ptr Float ->  Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
 foreign import ccall unsafe "saxpy_"  saxpy_unsafe_  :: Ptr Int -> Ptr Float ->  Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
 foreign import ccall        "scopy_"  scopy_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO ()
@@ -42,8 +46,10 @@ foreign import ccall "sdot_"   sdot_foreign   :: Ptr Int -> Ptr Float -> Ptr Int
 foreign import ccall unsafe "sdot_"   sdot_unsafe_ :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall        "sdsdot_" sdsdot_foreign :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall unsafe "sdsdot_" sdsdot_unsafe_ :: Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float
-foreign import ccall "snrm2_"   snrm2_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
+foreign import ccall        "snrm2_"  snrm2_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
 foreign import ccall unsafe "snrm2_"  snrm2_unsafe_  :: Ptr Int -> Ptr Float -> Ptr Int -> IO Float
+foreign import ccall        "dnrm2_"  dnrm2_foreign  :: Ptr Int -> Ptr Double -> Ptr Int -> IO Double
+foreign import ccall unsafe "dnrm2_"  dnrm2_unsafe_  :: Ptr Int -> Ptr Double -> Ptr Int -> IO Double
 foreign import ccall        "srot_"   srot_foreign   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Float -> IO ()
 foreign import ccall unsafe "srot_"   srot_unsafe_   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Float -> IO ()
 foreign import ccall "srotg_"  srotg_foreign  :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
@@ -78,7 +84,10 @@ sasum :: Int -> V.Vector Float -> Int -> IO Float
 sasum = ivi_foreign sasum_foreign
 sasum_unsafe :: Int -> V.Vector Float -> Int -> IO Float
 sasum_unsafe = ivi_foreign sasum_unsafe_
-
+dasum :: Int -> V.Vector Double -> Int -> IO Double
+dasum = ivi_foreign dasum_foreign
+dasum_unsafe :: Int -> V.Vector Double -> Int -> IO Double
+dasum_unsafe = ivi_foreign dasum_unsafe_
 
 -- | Call the FORTRAN implementation of the snrm2 function.   For details
 -- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
@@ -86,7 +95,10 @@ snrm2 :: Int -> V.Vector Float -> Int -> IO Float
 snrm2 = ivi_foreign snrm2_foreign
 snrm2_unsafe :: Int -> V.Vector Float -> Int -> IO Float
 snrm2_unsafe = ivi_foreign snrm2_unsafe_
-
+dnrm2 :: Int -> V.Vector Double -> Int -> IO Double
+dnrm2 = ivi_foreign dnrm2_foreign
+dnrm2_unsafe :: Int -> V.Vector Double -> Int -> IO Double
+dnrm2_unsafe = ivi_foreign dnrm2_unsafe_
 
 -- | Call the FORTRAN implementation of the isamax function.   For details
 -- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
@@ -94,6 +106,10 @@ isamax :: Int -> V.Vector Float -> Int -> IO Int
 isamax = ivi_foreign isamax_foreign
 isamax_unsafe :: Int -> V.Vector Float -> Int -> IO Int
 isamax_unsafe = ivi_foreign isamax_unsafe_
+idamax :: Int -> V.Vector Double -> Int -> IO Int
+idamax = ivi_foreign idamax_foreign
+idamax_unsafe :: Int -> V.Vector Double -> Int -> IO Int
+idamax_unsafe = ivi_foreign idamax_unsafe_
 
 -- | Call the FORTRAN implementation of the sdsdot function.   For details
 -- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
@@ -328,9 +344,10 @@ swap_helper f n sx incx sy incy =
 
 -- A helper function for wrapping a foreign call to a function of the type
 -- of the first argument.
-ivi_foreign :: (Ptr Int -> Ptr Float -> Ptr Int -> IO a)
+ivi_foreign :: (Storable b)
+  => (Ptr Int -> Ptr b -> Ptr Int -> IO a)
   -> Int
-  -> V.Vector Float
+  -> V.Vector b
   -> Int
   -> IO a
 ivi_foreign f n sx incx =
