@@ -27,16 +27,16 @@ tests = testGroup "BLAS"
     , testGroup "Level-1"
         [ dotTest "sdot" sdot (elements [-5..5])
         , sdsdotTest "sdsdot" sdsdot (elements [-5..5])
-        , rotgTest "srotg" genNiceFloat Fortran.srotg srotg
-        , rotgTest "drotg" genNiceDouble Fortran.drotg drotg
+        , rotgTest "srotg" genNiceFloat Fortran.srotg rotg
+        , rotgTest "drotg" genNiceDouble Fortran.drotg rotg
         , srotmgTest "srotmg" srotmg
         , srotmTest "srotm" srotm (elements [-5..5] `suchThat` (/=0))
-        , iviTest "sasum" sasum (Fortran.sasum) genNiceFloat (elements [1..5])
-        , iviTest "dasum" dasum (Fortran.dasum) genNiceDouble (elements [1..5])
-        , iviTest "snrm2" snrm2 (Fortran.snrm2) genNiceFloat (elements [1..5])
-        , iviTest "dnrm2" dnrm2 (Fortran.dnrm2) genNiceDouble (elements [1..5])
-        , iviTest "isamax" (\ n u incx -> succ $ isamax n u incx ) (Fortran.isamax) genNiceFloat (elements [1..5])
-        , iviTest "idamax" (\ n u incx -> succ $ idamax n u incx ) (Fortran.idamax) genNiceDouble (elements [1..5])
+        , iviTest "sasum" asum (Fortran.sasum) genNiceFloat (elements [1..5])
+        , iviTest "dasum" asum (Fortran.dasum) genNiceDouble (elements [1..5])
+        , iviTest "snrm2" nrm2 (Fortran.snrm2) genNiceFloat (elements [1..5])
+        , iviTest "dnrm2" nrm2 (Fortran.dnrm2) genNiceDouble (elements [1..5])
+        , iviTest "isamax" (\ n u incx -> succ $ iamax n u incx ) (Fortran.isamax) genNiceFloat (elements [1..5])
+        , iviTest "idamax" (\ n u incx -> succ $ iamax n u incx ) (Fortran.idamax) genNiceDouble (elements [1..5])
         , sscalTest "sscal" sscal (elements [1..5])
         , scopyTest "scopy" scopy (elements [-5..5])
         , sswapTest "sswap" sswap (elements [-5..5])
