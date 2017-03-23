@@ -32,6 +32,7 @@ tests = testGroup "BLAS"
         , srotmgTest "srotmg" srotmg
         , srotmTest "srotm" srotm (elements [-5..5] `suchThat` (/=0))
         , iviTest "sasum" sasum (Fortran.sasum) genNiceFloat (elements [1..5])
+        , iviTest "dasum" dasum (Fortran.dasum) genNiceDouble (elements [1..5])
         , iviTest "snrm2" snrm2 (Fortran.snrm2) genNiceFloat (elements [1..5])
         , iviTest "dnrm2" dnrm2 (Fortran.dnrm2) genNiceDouble (elements [1..5])
         , iviTest "isamax" (\ n u incx -> succ $ isamax n u incx ) (Fortran.isamax) genNiceFloat (elements [1..5])

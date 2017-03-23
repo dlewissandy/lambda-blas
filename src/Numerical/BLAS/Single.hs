@@ -7,7 +7,7 @@
 module Numerical.BLAS.Single(
    isamax,idamax,
    sdot,
-   sasum,
+   sasum,dasum,
    snrm2,dnrm2,
    sdsdot,
    srot,
@@ -141,7 +141,7 @@ sswap n sx incx sy incy =
   vector according to the following specification
 
 @
-   sasum n u incx = sum { abs u[i*incx]   | i<=[0..n-1] }
+   sasum n u incx = sum $ map abs $ sampleElems n u incx
 @
 
   The elements selected from the vector are controlled by the parameters
@@ -154,47 +154,33 @@ sswap n sx incx sy incy =
     length u >= (1 + (n-1)*abs(incx))
 @
 -}
-sasum :: Int -- ^ The number of summands
-   -> Vector Float -- ^ the vector u
-   -> Int          -- ^ the space between elements drawn from u
-   -> Float        -- ^ The sum of the product of the elements.
-sasum n sx !incx
-  | n < 1 || incx <1 = 0
-  | incx /=1         = sumAbsInc (n*incx)
-  | n < 5            = sumAbs 0 0
-  | m == 0           = unrolled 0 0
-  | otherwise        = unrolled (sumAbs 0 0) m
-   where
-       m :: Int
-       m = n `mod` 6
-       {-# INLINE sumAbs #-}
-       sumAbs !c !i
-           | i < m  = sumAbs (c + abs (sx `V.unsafeIndex` i)) (i+1)
-           | otherwise = c
-       {-# INLINE sumAbsInc #-}
-       sumAbsInc !imax = sumabsloop 0 0
-          where
-              {-# INLINE sumabsloop #-}
-              sumabsloop !c !i
-                 | i < imax = sumabsloop (c + abs (sx `V.unsafeIndex` i)) (i+incx)
-                 | otherwise = c
-       {-# INLINE [1] unrolled #-}
-       unrolled !c !i
-          | i>=n = c
-          | otherwise =
-              let i'  = i+6
-                  i1  = i+1
-                  i2  = i+2
-                  i3  = i+3
-                  i4  = i+4
-                  i5  = i+5
-                  c'  = c + (abs $ sx `V.unsafeIndex` i)
-                      + (abs $ sx `V.unsafeIndex` i1)
-                      + (abs $ sx `V.unsafeIndex` i2)
-                      + (abs $ sx `V.unsafeIndex` i3)
-                      + (abs $ sx `V.unsafeIndex` i4)
-                      + (abs $ sx `V.unsafeIndex` i5)
-              in  unrolled c' i'
+sasum :: Int -> V.Vector Float -> Int -> Float
+sasum = asum
+{- | O(n) dasum computes the sum of the absolute value of elements drawn a
+  vector according to the following specification
+
+@
+   dasum n u incx = sum $ map abs $ sampleElems n u incx
+@
+
+  The elements selected from the vector are controlled by the parameters
+  n and incx.   The parameter n determines the number of summands, while
+  the parameter incx determines the spacing between selected elements.
+
+  No bound checks are performed.   The calling program should ensure that:
+
+@
+    length u >= (1 + (n-1)*abs(incx))
+@
+-}
+dasum :: Int -> V.Vector Double -> Int -> Double
+dasum = asum
+-- A helper function for computing the L1 Norm
+asum :: (Num a, V.Storable a) => Int -> Vector a -> Int -> a
+{-# INLINE asum #-}
+asum n sx !incx
+  | incx <1    = 0
+  | otherwise  = V.foldl' (+) 0 $ V.map (abs) $ sampleElems n sx incx
 
 {- | O(n) snrm2 computes the sum of the squares of elements drawn a
 vector according to the following specification
