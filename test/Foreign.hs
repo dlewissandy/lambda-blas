@@ -62,53 +62,60 @@ foreign import ccall unsafe "sswap_"  sswap_unsafe_  :: Ptr Int -> Ptr Float -> 
 -- | Call the fortran implementation of the sdot function.   For details
 -- please see <https://software.intel.com/en-us/node/468398#D4E53C70-D8FA-4095-A800-4203CAFE64FE BLAS documentation>
 sdot :: Int       -- The number of summands
-    -> Ptr Float  -- A pointer to the vector x
+    -> V.Vector Float  -- A pointer to the vector x
     -> Int        -- The increment to use when traversing x
-    -> Ptr Float  -- A pointer to the vector y
+    -> V.Vector Float  -- A pointer to the vector y
     -> Int        -- The increment to use when traversing y
     -> IO Float   -- The sum of the elementwise products of x and y.
 sdot = iviivi_foreign sdot_foreign
 
-sdot_unsafe :: Int -> Ptr Float -> Int -> Ptr Float -> Int -> IO Float
+sdot_unsafe :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO Float
 sdot_unsafe = iviivi_foreign sdot_unsafe_
 
 -- | Call the FORTRAN implementation of the sasum function.   For details
 -- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
-sasum :: Int -> Ptr Float -> Int -> IO Float
+sasum :: Int -> V.Vector Float -> Int -> IO Float
 sasum = ivi_foreign sasum_foreign
-sasum_unsafe :: Int -> Ptr Float -> Int -> IO Float
+sasum_unsafe :: Int -> V.Vector Float -> Int -> IO Float
 sasum_unsafe = ivi_foreign sasum_unsafe_
 
 
 -- | Call the FORTRAN implementation of the snrm2 function.   For details
 -- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
-snrm2 :: Int -> Ptr Float -> Int -> IO Float
+snrm2 :: Int -> V.Vector Float -> Int -> IO Float
 snrm2 = ivi_foreign snrm2_foreign
-snrm2_unsafe :: Int -> Ptr Float -> Int -> IO Float
+snrm2_unsafe :: Int -> V.Vector Float -> Int -> IO Float
 snrm2_unsafe = ivi_foreign snrm2_unsafe_
 
 
 -- | Call the FORTRAN implementation of the isamax function.   For details
 -- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
-isamax :: Int -> Ptr Float -> Int -> IO Int
+isamax :: Int -> V.Vector Float -> Int -> IO Int
 isamax = ivi_foreign isamax_foreign
-isamax_unsafe :: Int -> Ptr Float -> Int -> IO Int
+isamax_unsafe :: Int -> V.Vector Float -> Int -> IO Int
 isamax_unsafe = ivi_foreign isamax_unsafe_
 
 -- | Call the FORTRAN implementation of the sdsdot function.   For details
 -- please see <https://software.intel.com/en-us/node/468392 BLAS documentation>
-sdsdot :: Int -> Float -> Ptr Float -> Int -> Ptr Float -> Int -> IO Float
-sdsdot n a px incx py incy =
-     alloca $ \ pa -> do
+sdsdot :: Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO Float
+sdsdot  = sdsdotHelper sdsdot_foreign
+sdsdot_unsafe :: Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO Float
+sdsdot_unsafe = sdsdotHelper sdsdot_unsafe_
+sdsdotHelper :: (Ptr Int -> Ptr Float -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> IO Float)
+    -> Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> IO Float
+{-# INLINE sdsdotHelper #-}
+sdsdotHelper f n a sx incx sy incy =
+    alloca $ \ pn ->
+    alloca $ \ pincx ->
+    alloca $ \ pincy ->
+    alloca $ \ pa -> do
+        poke pn n
+        poke pincx incx
+        poke pincy incy
         poke pa a
-        iviivi_foreign (\ pn _ pincx _ pincy ->
-            sdsdot_foreign pn pa px pincx py pincy ) n px incx py incy
-sdsdot_unsafe :: Int -> Float -> Ptr Float -> Int -> Ptr Float -> Int -> IO Float
-sdsdot_unsafe n a px incx py incy =
-     alloca $ \ pa -> do
-        poke pa a
-        iviivi_foreign (\ pn _ pincx _ pincy ->
-            sdsdot_unsafe_ pn pa px pincx py pincy ) n px incx py incy
+        V.MVector _ fptrx <- V.unsafeThaw sx
+        V.MVector _ fptry <- V.unsafeThaw sy
+        f pn pa (getPtr fptrx) pincx (getPtr fptry) pincy
 
 -- Setup a Givens rotation.
 -- please see <http://www.netlib.org/lapack/explore-html/df/d28/group__single__blas__level1_ga2f65d66137ddaeb7ae93fcc4902de3fc.html#ga2f65d66137ddaeb7ae93fcc4902de3fc>
@@ -323,31 +330,34 @@ swap_helper f n sx incx sy incy =
 -- of the first argument.
 ivi_foreign :: (Ptr Int -> Ptr Float -> Ptr Int -> IO a)
   -> Int
-  -> Ptr Float
+  -> V.Vector Float
   -> Int
   -> IO a
-ivi_foreign f n px incx =
+ivi_foreign f n sx incx =
     alloca $ \ pn ->
     alloca $ \ pincx -> do
         poke pn n
         poke pincx incx
-        f pn px pincx
+        V.MVector _ fptr <- V.unsafeThaw sx
+        f pn (getPtr fptr) pincx
 
 -- A helper function for wrapping a foreign call to a function of the type
 -- of the first argument.
 iviivi_foreign :: (Ptr Int -> Ptr Float -> Ptr Int
     -> Ptr Float -> Ptr Int -> IO a)
     -> Int
-    -> Ptr Float
+    -> V.Vector Float
     -> Int
-    -> Ptr Float
+    -> V.Vector Float
     -> Int
     -> IO a
-iviivi_foreign f n px incx py incy =
+iviivi_foreign f n sx incx sy incy =
     alloca $ \ pn ->
     alloca $ \ pincx ->
     alloca $ \ pincy -> do
         poke pn n
         poke pincx incx
         poke pincy incy
-        f pn px pincx py pincy
+        V.MVector _ fptrx <- V.unsafeThaw sx
+        V.MVector _ fptry <- V.unsafeThaw sy
+        f pn (getPtr fptrx) pincx (getPtr fptry ) pincy
