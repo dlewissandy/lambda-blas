@@ -19,7 +19,7 @@ main = do
     -- GENERATE RANDOM DATA ON WHICH TO EVALUATE THE BENCHMARKS
     sx<- generate $ genNVector (genFloat genEveryday) nmax
     sy<- generate $ genNVector (genFloat genEveryday) nmax
-    --dx<- generate $ genNVector (genDouble genEveryday) nmax
+    dx<- generate $ genNVector (genDouble genEveryday) nmax
     --dy<- generate $ genNVector (genDouble genEveryday) nmax
     sa<- generate $ genFloat genEveryday
     sb<- generate $ genFloat genEveryday
@@ -51,6 +51,15 @@ main = do
         vectorbench "isamax" (normHelper isamax sx)
                              (normHelper F.isamax_unsafe sx)
                              (normHelper F.isamax sx),
+        vectorbench "dasum"  (normHelper dasum dx)
+                             (normHelper F.dasum_unsafe dx)
+                             (normHelper F.dasum dx),
+        vectorbench "dnrm2"  (normHelper dnrm2 dx)
+                             (normHelper F.dnrm2_unsafe dx)
+                             (normHelper F.dnrm2 dx),
+        vectorbench "idamax" (normHelper idamax dx)
+                             (normHelper F.idamax_unsafe dx)
+                             (normHelper F.idamax dx),
         vectorbench "sdsdot" (axpyHelper sdsdot sa sx sy)
                              (axpyHelper F.sdsdot_unsafe sa sx sy)
                              (axpyHelper F.sdsdot sa sx sy),
