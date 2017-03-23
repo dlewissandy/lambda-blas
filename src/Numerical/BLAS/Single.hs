@@ -2,52 +2,82 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE RecordWildCards #-}
--- | This module provides BLAS library functions for vectors of
--- single precision floating point numbers.
+{- | This module provides BLAS level-1 library functions for vectors of
+single precision floating point numbers.  In general, BLAS level-1 functions
+that take vector valued arguments support the ability to apply their
+functionality over all the elements in the vector, or to a smaller vector
+comprised of elements drawn in uniform intervals from the original
+vector argument.   This capability allows vector operations to be applied,
+for example, to columns of matrices.
+
+To support this capability, each BLAS level-1 function that has at least
+one vector valued argument takes an Int parameter, n, that represents the
+number of elements to be extracted from the vector arguments.  The function
+also will take an additional Int argument for each vector valued argument,
+representing the both the direction of traversal and the interval between
+elements are drawn of the original vector argument.   Typically n is the first
+Int valued argument, and the increments are the first Int valued argment
+following a vector agument.
+
+For example:
+
+@
+sdot :: Int -> Vector Float -> Int -> Vector Float -> Int -> Float
+sdot n sx incx sy incy = foldl' (+) 0 $ zipWith (*) (sampleElems n sx incx) (sampleElems n sy incy)
+@
+
+is morally equivalent to the dot product of the vectors sx and sy when both
+vectors have lengths of n and both incx and incy are unity.
+
+The BLAS functions do not generally guard against invalid values of the increment
+arguments.   For each vector argument v, and each increment inc, the calling
+program should ensure that:
+
+@
+inc /= 0
+length v >= (1 + (n-1)*inc)
+@
+-}
 module Numerical.BLAS.Single(
-   isamax,
+   -- * Norms
+   asum,sasum,dasum,
+   nrm2,snrm2,dnrm2,
+   -- * Products
    sdot,
-   sasum,
-   snrm2,
    sdsdot,
+   sscal,
+   -- * Rotations
    srot,
    rotg,srotg,drotg,
    srotm,
    srotmg,
-   sscal,
+   -- * Linear Combinations
+   saxpy,
+   -- * Memory Operations
    scopy,
    sswap,
-   saxpy,
-    ) where
+   -- * Specialized Folds
+   iamax,isamax,idamax,
+   ) where
 
 import Numerical.BLAS.Types
 import Numerical.BLAS.Util
 
+import Data.Ord(comparing)
 import Data.Vector.Storable(Vector)
 import qualified Data.Vector.Storable as V
 
-{- | O(n) sdot function computes the sum of the products of elements
-   drawn from two vectors according to the following specification:
-
-@
-   sdot n u incx v incy = sum { u[f incx k] * v[f incy k] | k<=[0..n-1] }
-   where
-   f inc k | inc > 0  = inc * k
-           | inc < 0  = (1-n+k)*inc
-@
-
-  The elements selected from the two vectors are controlled by the parameters
-  n, incx and incy.   The parameter n determines the number of summands, while
-  the parameters incx and incy determine the spacing between selected elements
-  and the direction which the vectors are traversed.  When both incx and incy
-  are unity and n is the length of both vectors then sdot corresponds to the dot
-  product of two vectors.
-
--}
-sdot :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float
+-- | O(n) - compute the sum of products of elements drawn from two Float vectors.
+-- This function is morally equivalent to the dot product of vectors x and y
+-- when n is the length of both x and y, and both incx and incy are unity.
+sdot :: Int            -- ^ The number of elements n
+     -> Vector Float -- ^ The first vector, x
+     -> Int            -- ^ The increment, incx, between elements drawn from x
+     -> Vector Float -- ^ The second vector, y
+     -> Int            -- ^ The increment, incy,  between elements drawn from y
+     -> Float          -- ^ The sum of products of the selected elements
 sdot !n sx !incx sy !incy = V.foldl' (+) 0
     $ V.zipWith (*) (sampleElems n sx incx) $ sampleElems n sy incy
-
 
 -- O(1) - Compute the starting index of an iterative vector traversal
 -- given the length of the vector and the iterative step size.
@@ -58,182 +88,79 @@ firstIndex !n !inc
     | inc>0     = 0
     | otherwise = (1-n)*inc
 
-{- | O(n) sscal multiply a scalar by n elements drawn from a vector
-according to the following specification:
-
-@
-   forall incx>0, n>0, 0<=i<=(n-1)*incx
-     (sscal n a u inc)!i ==
-         if i `mod` inc == 0
-            then a*u!i
-            else = u!i
-@
-
-  The elements selected from the vector are controlled by the parameters
-  n and incx.   The parameter n determines the number of elements, while
-  the parameter incx determines the spacing between selected elements.
-
-  No bound checks are performed.   The calling program should ensure that:
-
-@
-    length u >= (1 + (n-1)incx)
-@
--}
-sscal :: Int -> Float -> V.Vector Float -> Int -> V.Vector Float
+-- | O(n) - Multiply selected elements in a vector, x, by a scalar, a.   This
+-- function is morally equivalent to scalar multiplication a*x when n is the
+-- length x and incx is unity.
+sscal :: Int          -- ^ The number of elements to scale, n
+    -> Float          -- ^ The scalar factor, a
+    -> Vector Float -- ^ The vector to scale, x
+    -> Int            -- ^ The increment between elements to scale, incx
+    -> Vector Float -- ^ The vector with scaled elements
 sscal n a sx incx =
     V.unsafeUpdate_ sx (sampleIndices n incx )
     $ V.map (*a)
     $ sampleElems n sx incx
 
-{- | O(n) copy n elements from one vector into another according to the
-following specification
-
-@
-   forall incx>0, n>0, 0<=j<=length v 0<=i<n
-     (scopy n sx incx sy incy)!i =
-         if j==i*incy
-            then if (sign incx) == (sign incy)
-                   then sx!(i*incx)
-                   else sx!(incx*(n-1-i))
-            else sy!j
-@
-
-  The elements selected from the vector are controlled by the parameters
-  n and incx.   The parameter n determines the number of elements, while
-  the parameter incx determines the spacing between selected elements.
-
-  No bound checks are performed.   The calling program should ensure that:
-
-@
-    length sx >= (1 + (n-1)incx)
-    length sy >= (1 + (n-1)incy)
-@
--}
-scopy :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> V.Vector Float
+-- | O(n) - Copy n elements from one Float vector into another.
+scopy :: Int          -- ^ The number of elements to copy
+    -> Vector Float -- ^ The source vector from which to copy elements
+    -> Int            -- ^ The increment between elements drawn from the source vector
+    -> Vector Float -- ^ The target vector into which elements are copied
+    -> Int            -- ^ The increment between the destination elements
+    -> Vector Float
 scopy n sx incx sy incy = updateElems (\ _ x -> x ) n sy incy sx incx
 
-{- | O(n) swap n elements between two vectors according to the following
-specification:
-
-@
-   forall incx/=0, incy/=0, n>0
-     sswap n u incx v incy = (scopy n v incy u incx, scopy n u incx v incy)
-@
-
-  The elements selected from the vector are controlled by the parameters
-  n and incx.   The parameter n determines the number of elements, while
-  the parameter incx determines the spacing between selected elements.
-
-  No bound checks are performed.   The calling program should ensure that:
-
-@
-    length sx >= (1 + (n-1)abs incx)
-    length sy >= (1 + (n-1)abs incy)
-@
--}
-sswap :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> (V.Vector Float, V.Vector Float)
+-- |  O(n) -- Swap n elements between two Float vectors.
+sswap :: Int          -- ^ The number of elements to copy
+    -> Vector Float -- ^ The first vector from which elements will be swapped
+    -> Int            -- ^ The increment between elements drawn from the first vector
+    -> Vector Float -- ^ The second vector from which elements will be swapped
+    -> Int            -- ^ The increment between elements drawn from the second vector
+    -> (Vector Float, Vector Float)
 sswap n sx incx sy incy =
     ( updateElems (\ _ y -> y ) n sx incx sy incy
     , updateElems (\ _ x -> x ) n sy incy sx incx )
 
-{- | O(n) sasum computes the sum of the absolute value of elements drawn a
-  vector according to the following specification
+-- | O(n) - asum computes the sum of the absolute value of elements drawn a
+-- vector, x. This function is morally equivalent to the L1 norm
+-- when n is equal to the length of x and incx is unity.
+asum :: (Num a, V.Storable a)
+    =>  Int          -- ^ The number of elements to sum, n
+    -> Vector a    -- ^ The vector from which summands are selected, x
+    -> Int           -- ^ The increment between summands, incx
+    -> a
+{-# INLINE asum #-}
+asum n sx !incx
+  | incx <1    = 0
+  | otherwise  = V.foldl' (+) 0 $ V.map (abs) $ sampleElems n sx incx
+{-# DEPRECATED sasum, dasum "Use asum instead" #-}
+sasum :: Int -> Vector Float -> Int -> Float
+sasum = asum
+dasum :: Int -> Vector Double -> Int -> Double
+dasum = asum
 
-@
-   sasum n u incx = sum { abs u[i*incx]   | i<=[0..n-1] }
-@
 
-  The elements selected from the vector are controlled by the parameters
-  n and incx.   The parameter n determines the number of summands, while
-  the parameter incx determines the spacing between selected elements.
-
-  No bound checks are performed.   The calling program should ensure that:
-
-@
-    length u >= (1 + (n-1)*abs(incx))
-@
--}
-sasum :: Int -- ^ The number of summands
-   -> Vector Float -- ^ the vector u
-   -> Int          -- ^ the space between elements drawn from u
-   -> Float        -- ^ The sum of the product of the elements.
-sasum n sx !incx
-  | n < 1 || incx <1 = 0
-  | incx /=1         = sumAbsInc (n*incx)
-  | n < 5            = sumAbs 0 0
-  | m == 0           = unrolled 0 0
-  | otherwise        = unrolled (sumAbs 0 0) m
-   where
-       m :: Int
-       m = n `mod` 6
-       {-# INLINE sumAbs #-}
-       sumAbs !c !i
-           | i < m  = sumAbs (c + abs (sx `V.unsafeIndex` i)) (i+1)
-           | otherwise = c
-       {-# INLINE sumAbsInc #-}
-       sumAbsInc !imax = sumabsloop 0 0
-          where
-              {-# INLINE sumabsloop #-}
-              sumabsloop !c !i
-                 | i < imax = sumabsloop (c + abs (sx `V.unsafeIndex` i)) (i+incx)
-                 | otherwise = c
-       {-# INLINE [1] unrolled #-}
-       unrolled !c !i
-          | i>=n = c
-          | otherwise =
-              let i'  = i+6
-                  i1  = i+1
-                  i2  = i+2
-                  i3  = i+3
-                  i4  = i+4
-                  i5  = i+5
-                  c'  = c + (abs $ sx `V.unsafeIndex` i)
-                      + (abs $ sx `V.unsafeIndex` i1)
-                      + (abs $ sx `V.unsafeIndex` i2)
-                      + (abs $ sx `V.unsafeIndex` i3)
-                      + (abs $ sx `V.unsafeIndex` i4)
-                      + (abs $ sx `V.unsafeIndex` i5)
-              in  unrolled c' i'
-
-{- | O(n) sasum computes the sum of the squares of elements drawn a
-vector according to the following specification
-
-@
- snrm2 n u incx = sum { u[i*incx] ^2   | i<=[0..n-1] }
-@
-
-The elements selected from the vector are controlled by the parameters
-n and incx.   The parameter n determines the number of summands, while
-the parameter incx determines the spacing between selected elements.
-
-Note: The BLAS implementation computes the scaled sum of squares such that
-1.0 < ssq < 2*n and scale is the maximum of either 1.0 or the largest absolute
-value of the elments of u.
-
-No bound checks are performed.   The calling program should ensure that:
-
-@
-  length u >= (1 + (n-1)*abs(incx))
-@
--}
-snrm2 :: Int -- ^ The number of summands
- -> Vector Float -- ^ the vector u
- -> Int          -- ^ the space between elements drawn from u
- -> Float        -- ^ The l2 norm of the vector u
-snrm2 !n sx !incx
+-- | O(n) - nrm2 computes the sum of the squared values of elements drawn a
+-- vector, x. This function is morally equivalent to the L2 norm
+-- when n is equal to the length of x and incx is unity.
+nrm2 :: (Floating a, Ord a, V.Storable a)
+    =>  Int          -- ^ The number of elements to sum, n
+    -> Vector a    -- ^ The vector from which summands are selected, x
+    -> Int           -- ^ The increment between summands, incx
+    -> a
+{-# INLINE nrm2 #-}
+nrm2 !n sx !incx
     | n<1 || incx<1 = 0.0
     | n==1          = abs $ sx `V.unsafeIndex` 0
     | otherwise     = slassq (incx*(n-1))
     where
     slassq !imax = slassq_loop 0 0.0 1.0
         where
-        slassq_loop :: Int -> Float -> Float -> Float
         {-# INLINE slassq_loop #-}
         slassq_loop !i !scale !ssq
             | i > imax = scale*sqrt ssq
             | otherwise =
                 let xi = sx `V.unsafeIndex` i
-                    f:: Float -> Float
                     {-# INLINE f #-}
                     f x = case scale < x of
                         True  -> slassq_loop (i+incx) x (1.0 + ssq * (scale/x)^(2::Int))
@@ -242,80 +169,44 @@ snrm2 !n sx !incx
                        EQ -> slassq_loop (i+incx) scale ssq
                        LT -> f (negate xi)
                        GT -> f xi
+{-# DEPRECATED snrm2, dnrm2 "Use nrm2 instead" #-}
+snrm2 :: Int-> Vector Float-> Int-> Float
+snrm2 = nrm2
+dnrm2 :: Int-> Vector Double-> Int-> Double
+dnrm2 = nrm2
 
 
-{- | O(n) isamax computes the index of the element of a vector having the
-largest absolute value according to the following specification.
-
-@
-    isamax n u incx = i
-    where
-        zs = [ abs u[i*incx]   | i<=[0..n-1] ]
-        a  = max zs
-        Just i = findIndex a zs
-@
-
- The elements selected from the vector are controlled by the parameters
- n and incx.   The parameter n determines the number of summands, while
- the parameter incx determines the spacing between selected elements.
-
- No bound checks are performed.   The calling program should ensure that:
-
-@
-   length u >= (1 + (n-1)*abs(incx))
-@
--}
-isamax :: Int -> V.Vector Float -> Int -> Int
-isamax !n sx !incx
+-- | O(n) - Find the index of the element with the largest absolute value
+-- from elements drawn from a vector.   This function is morally
+-- equivalent to the index of the element with the largest magnitude when
+-- n is the length of the vector x and the increment, inc, is unity.
+iamax :: (Ord a, Num a, V.Storable a)
+    => Int         -- ^ The number of elements drawn from the source vector,n
+    -> Vector a  -- ^ The source vector, x
+    -> Int         -- ^ The interval between elements drawn from the source vector, incx
+    -> Int         -- ^ The index of the element with the largest absolute value.
+{-# INLINE idamax #-}
+iamax !n sx !incx
    | n < 1 || incx < 1 = -1
    | n == 1            = 0
-   | incx == 1         = findmax1 0 (abs $ sx `V.unsafeIndex` 0) 1
-   | otherwise         = findmax 0 (abs $ sx `V.unsafeIndex` 0) 1 incx
-   where
-       findmax1 !k !c !i
-          | i >= n  = k
-          | otherwise =
-              let xi = sx `V.unsafeIndex` i
-                  f x = case x > c of
-                       True -> findmax1 i x (i+1)
-                       False -> findmax1 k c (i+1)
-              in  case compare xi 0.0 of
-                      EQ -> findmax1 k c (i+1)
-                      LT -> f $ negate xi
-                      GT -> f xi
-       findmax !k !c !i !ix
-          | i >= n  = k
-          | otherwise =
-              let xi = sx `V.unsafeIndex` ix
-                  f x = case x > c of
-                       True -> findmax i x (i+1) (ix+incx)
-                       False -> findmax k c (i+1) (ix+incx)
-              in  case compare xi 0.0 of
-                      EQ -> findmax k c (i+1) (ix+incx)
-                      LT -> f $ negate xi
-                      GT -> f xi
+   | otherwise         = V.maxIndexBy (comparing abs) $ sampleElems n sx incx
+{-# DEPRECATED isamax,idamax "use iamax instead" #-}
+isamax :: Int-> Vector Float-> Int-> Int
+isamax = iamax
+idamax :: Int-> Vector Double-> Int-> Int
+idamax = iamax
 
-
-{- | O(n) sdot computes the sum of the products of elements drawn from two
- vectors according to the following specification:
-
-@
- sdsdot n u incx v incy = sum { u[f incx k] * v[f incy k] | k<=[0..n-1] }
- where
- f inc k | inc > 0  = inc * k
-         | inc < 0  = (1-n+k)*inc
-@
-The elements selected from the two vectors are controlled by the parameters
-n, incx and incy.   The parameter n determines the number of summands, while
-the parameters incx and incy determine the spacing between selected elements
-and the direction which the vectors are traversed.  When both incx and incy
-are unity and n is the length of both vectors then
-sdsdot corresponds to the dot product of two vectors.
-
-NOTE: The summation is performed using double precision floating point and the
-result is coerced to a single immediatly prior to returing the value.
--}
-sdsdot :: Int -> Float -> Vector Float -> Int -> Vector Float -> Int -> Float
+-- | O(n) - compute the sum of products of elements drawn from two Float vectors
+-- using Double precision internally. This function is morally equivalent to the
+-- dot product of vectors x and y when n is the length of both x and y, and both
+-- incx and incy are unity.
+sdsdot :: Int            -- ^ The number of elements n
+     -> Float          -- ^ a Vector valued adjustment to add to the sum
+     -> Vector Float -- ^ The first vector, x
+     -> Int            -- ^ The increment, incx, between elements drawn from x
+     -> Vector Float -- ^ The second vector, y
+     -> Int            -- ^ The increment, incy,  between elements drawn from y
+     -> Float          -- ^ The sum of products of the selected elements
 sdsdot n (floatToDouble -> sb) sx !incx sy !incy
    | n< 1                   = doubleToFloat sb
    | incx==incy && incx > 0 = whenPositiveEqualInc (n*incx)
@@ -342,31 +233,6 @@ sdsdot n (floatToDouble -> sb) sx !incx sy !incy
                       * (floatToDouble $ sy `V.unsafeIndex` ky)
            in  whenUnequalOrNegIncs (i+1) c' (kx+incx) (ky+incy)
 
-
-{- | O(1) Construct a plane Givens rotation on a deconstructed two-vector.
-Specifically:
-
-@
-srotg sa sb = ( r, secant(theta), cos(theta), sin(theta))
-@
-
-where r is the signed magnitude of the vector <sa,sb>.   In the case when r
-is zero, srotg returns (0,0,1,0).
--}
-srotg :: Float -> Float -> GivensRot Float
-srotg = rotg
-{- | O(1) Construct a plane Givens rotation on a deconstructed two-vector.
-Specifically:
-
-@
-drotg sa sb = ( r, secant(theta), cos(theta), sin(theta))
-@
-
-where r is the signed magnitude of the vector <sa,sb>.   In the case when r
-is zero, drotg returns (0,0,1,0).
--}
-drotg :: Double -> Double -> GivensRot Double
-drotg = rotg
 {- | O(1) Construct a plane Givens rotation on a deconstructed two-vector.
 Specifically:
 
@@ -375,9 +241,12 @@ rotg sa sb = ( r, secant(theta), cos(theta), sin(theta))
 @
 
 where r is the signed magnitude of the vector <sa,sb>.   In the case when r
-is zero, rotg returns (0,0,1,0).
+is zero, rotg returns (0,0,1,0).   See also "rot".
 -}
-rotg :: (Fractional a, Floating a, Ord a) => a -> a -> GivensRot a
+rotg :: (Fractional a, Floating a, Ord a) 
+   => a    -- ^ The x coordinate of the deconstructed vector
+   -> a    -- ^ The y coordinate of the deconstructed vector
+   -> GivensRot a -- ^ The Givens rotation coefficients
 {-# INLINE rotg #-}
 rotg !sa !sb =
     case scale of
@@ -396,6 +265,12 @@ rotg !sa !sb =
         asb = abs sb
         scale = asa + asb
         magnitude = scale * sqrt((sa/scale)^(2::Int)+(sb/scale)^(2::Int))
+{-# DEPRECATED srotg, drotg "Use rotg instead." #-}
+srotg :: Float -> Float -> GivensRot Float
+srotg = rotg
+drotg :: Double -> Double -> GivensRot Double
+drotg = rotg
+
 
 {- | O(1) Construct a modified plane Givens rotation on a deconstructed
 two-vector as described in "Basic Linear Algebra Subprograms for Fortran
@@ -410,9 +285,13 @@ where G is the Givens rotation matirx.   d1, d2 and x1 are rescaled by the the
 "checkscale" subprogram to be within the conservative limits of +/- 1/(4096)^2
 and +/- 4096^2.
 
+See also "rotm".
 -}
-
-srotmg :: Float -> Float -> Float -> Float -> ModGivensRot Float
+srotmg :: Float -- ^ The first diagonal element sd1
+    -> Float    -- ^ The second diagonal element sd2
+    -> Float    -- ^ The first component of the vector sx1
+    -> Float    -- ^ The second component of the vector sx2
+    -> ModGivensRot Float -- ^ The modified Givens Rotation coefficients
 srotmg sd1 sd2 sx1 sy1
    | sd1 < 0   = FLAGNEG1 { d1=0, d2=0, x1=0, h11=0, h12=0, h21=0, h22=0}
    | sp2 == 0  = FLAGNEG2
@@ -489,46 +368,38 @@ checkscale = checkscale2 . checkscale1
        | otherwise = ( -1, sd1, sd2, sx1, sh11, 1, -1, sh22 )
 
 
-{- | O(n) apply a Givens rotation to a pair of vectors
-
-  The elements selected from the vector are controlled by the parameters
-  n and incx.   The parameter n determines the number of elements, while
-  the parameter incx determines the spacing between selected elements.
-
-  No bound checks are performed.   The calling program should ensure that:
-
-@
-    length sx >= (1 + (n-1)abs incx)
-    length sy >= (1 + (n-1)abs incy)
-@
--}
-srot :: Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float -> Float -> (V.Vector Float, V.Vector Float)
+-- | O(n) apply a Givens rotation to elements drawn from a pair of vectors.
+-- This is morally equivalent to rotating both vectors through an angle when
+-- n is equal to the length of both the vectors, and both incx and incy are
+-- unity.
+srot :: Int          -- ^ The number of elements to rotate
+    -> Vector Float  -- ^ The first vector to rotate, x
+    -> Int           -- ^ The interval between rotated elements in the first vector, incx
+    -> Vector Float  -- ^ The second vector to rotate, y
+    -> Int           -- ^ The interval between rotated elements in the second vector, incy
+    -> Float         -- ^ The cosine of the angle of rotation
+    -> Float         -- ^ The sine of the angle of rotation
+    -> (Vector Float, Vector Float) -- the rotated vectors
 srot n u incx v incy c s =
     ( updateElems (\ x y -> c*x + s*y) n u incx v incy
     , updateElems (\ y x -> c*y - s*x) n v incy u incx )
 
 
 {- | O(n) compute the linear combination of elements drawn from two vectors
-according to the following rule:
-
-saxpy n a sx incx sy incy = updateElems (\ x y -> y + a*x) n sy incy sx incx
-
-The elements selected from the vector are controlled by the parameters
-n and incx.   The parameter n determines the number of elements, while
-the parameter incx determines the spacing between selected elements.
-
-No bound checks are performed.   The calling program should ensure that:
-
-@
-    length sx >= (1 + (n-1)abs incx)
-    length sy >= (1 + (n-1)abs incy)
-@
+according.  This is morally equivalent to the linear combination of the two
+vectors when n is the length of the vectors and both incx and incy are unity.
 -}
-saxpy :: Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> V.Vector Float
+saxpy :: Int        -- ^ The number of elements
+    -> Float        -- ^ The scalar multiple for the first vector, a
+    -> Vector Float -- ^ The first vector, x
+    -> Int          -- ^ The interval between elements drawn from the first vector, incx
+    -> Vector Float -- ^ The second vector, y
+    -> Int          -- ^ The interval between elements drawn from the second vector, incy
+    -> Vector Float -- ^ The linear combination a*x + y
 saxpy n a sx incx sy incy = updateElems (\ y x -> y + a*x ) n sy incy sx incx
 
-{- | O(n) apply a modified Givens rotation to a pair of vectors according to
-the following specification:
+{- | O(n) apply a modified Givens rotation to elements drawn from a pair of
+vectors according to the following specification:
 
 @
 srotm FLAGNEG2 n sx incx sy incy = (sx,sy)
@@ -542,24 +413,15 @@ srotm (FLAG1 h11 h22) n sx incx sy incy =
    ( updateElems (\ x y -> h11*x + y) n sx incx sy incy
    , updateElems (\ y x -> -x + h22*y) n sy incy sx incx)
 @
-The elements selected from the vector are controlled by the parameters
-n and incx.   The parameter n determines the number of elements, while
-the parameter incx determines the spacing between selected elements.
-
-No bound checks are performed.   The calling program should ensure that:
-
-@
-    length sx >= (1 + (n-1)abs incx)
-    length sy >= (1 + (n-1)abs incy)
-@
+see also "rotmg".
 -}
 srotm :: ModGivensRot Float
     -> Int
-    -> V.Vector Float
+    -> Vector Float
     -> Int
-    -> V.Vector Float
+    -> Vector Float
     -> Int
-    -> ( V.Vector Float, V.Vector Float )
+    -> ( Vector Float, Vector Float )
 {-# INLINE srotm #-}
 srotm flag !n sx !incx sy !incy = case flag of
     FLAGNEG2 -> (sx,sy)

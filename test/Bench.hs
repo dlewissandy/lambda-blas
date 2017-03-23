@@ -19,7 +19,7 @@ main = do
     -- GENERATE RANDOM DATA ON WHICH TO EVALUATE THE BENCHMARKS
     sx<- generate $ genNVector (genFloat genEveryday) nmax
     sy<- generate $ genNVector (genFloat genEveryday) nmax
-    --dx<- generate $ genNVector (genDouble genEveryday) nmax
+    dx<- generate $ genNVector (genDouble genEveryday) nmax
     --dy<- generate $ genNVector (genDouble genEveryday) nmax
     sa<- generate $ genFloat genEveryday
     sb<- generate $ genFloat genEveryday
@@ -42,23 +42,32 @@ main = do
         vectorbench "sdot"   (dotHelper sdot sx sy)
                              (dotHelper F.sdot_unsafe sx sy)
                              (dotHelper F.sdot sx sy),
-        vectorbench "sasum"  (normHelper sasum sx)
+        vectorbench "sasum"  (normHelper asum sx)
                              (normHelper F.sasum_unsafe sx)
                              (normHelper F.sasum sx),
-        vectorbench "snrm2"  (normHelper snrm2 sx)
+        vectorbench "snrm2"  (normHelper nrm2 sx)
                              (normHelper F.snrm2_unsafe sx)
                              (normHelper F.snrm2 sx),
-        vectorbench "isamax" (normHelper isamax sx)
+        vectorbench "isamax" (normHelper iamax sx)
                              (normHelper F.isamax_unsafe sx)
                              (normHelper F.isamax sx),
+        vectorbench "dasum"  (normHelper asum dx)
+                             (normHelper F.dasum_unsafe dx)
+                             (normHelper F.dasum dx),
+        vectorbench "dnrm2"  (normHelper nrm2 dx)
+                             (normHelper F.dnrm2_unsafe dx)
+                             (normHelper F.dnrm2 dx),
+        vectorbench "idamax" (normHelper iamax dx)
+                             (normHelper F.idamax_unsafe dx)
+                             (normHelper F.idamax dx),
         vectorbench "sdsdot" (axpyHelper sdsdot sa sx sy)
                              (axpyHelper F.sdsdot_unsafe sa sx sy)
                              (axpyHelper F.sdsdot sa sx sy),
         vectorbench "saxpy"  (axpyHelper saxpy sa sx sy)
                              (axpyHelper F.saxpy_unsafe sa sx sy)
                              (axpyHelper F.saxpy sa sx sy),
-        scalarbench2 "srotg" srotg F.srotg_unsafe F.srotg sa sb,
-        scalarbench2 "drotg" drotg F.drotg_unsafe F.drotg da db,
+        scalarbench2 "srotg" rotg F.srotg_unsafe F.srotg sa sb,
+        scalarbench2 "drotg" rotg F.drotg_unsafe F.drotg da db,
         scalarbench4 "srotmg" srotmg F.srotmg_unsafe F.srotmg sa sb sc sd,
         vectorbench "sscal"  (scalHelper sscal sa sx)
                              (scalHelper F.sscal_unsafe sa sx)
