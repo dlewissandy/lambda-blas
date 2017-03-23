@@ -5,7 +5,7 @@
 -- | This module provides BLAS library functions for vectors of
 -- single precision floating point numbers.
 module Numerical.BLAS.Single(
-   isamax,
+   isamax,idamax,
    sdot,
    sasum,
    snrm2,dnrm2,
@@ -23,6 +23,7 @@ module Numerical.BLAS.Single(
 import Numerical.BLAS.Types
 import Numerical.BLAS.Util
 
+import Data.Ord(comparing)
 import Data.Vector.Storable(Vector)
 import qualified Data.Vector.Storable as V
 
@@ -273,11 +274,7 @@ nrm2 !n sx !incx
 largest absolute value according to the following specification.
 
 @
-    isamax n u incx = i
-    where
-        zs = [ abs u[i*incx]   | i<=[0..n-1] ]
-        a  = max zs
-        Just i = findIndex a zs
+    isamax n u incx = maxIndexBy ( comparing abs ) $ sampleElems n u incx
 @
 
  The elements selected from the vector are controlled by the parameters
@@ -291,35 +288,33 @@ largest absolute value according to the following specification.
 @
 -}
 isamax :: Int -> V.Vector Float -> Int -> Int
-isamax !n sx !incx
+isamax = iamax
+{- | O(n) idamax computes the index of the element of a vector having the
+largest absolute value according to the following specification.
+
+@
+    idamax n u incx = maxIndexBy ( comparing abs ) $ sampleElems n u incx
+@
+
+ The elements selected from the vector are controlled by the parameters
+ n and incx.   The parameter n determines the number of summands, while
+ the parameter incx determines the spacing between selected elements.
+
+ No bound checks are performed.   The calling program should ensure that:
+
+@
+   length u >= (1 + (n-1)*abs(incx))
+@
+-}
+idamax :: Int -> Vector Double -> Int -> Int
+idamax = iamax
+iamax :: (Ord a, Num a, V.Storable a)
+    => Int -> V.Vector a -> Int -> Int
+{-# INLINE idamax #-}
+iamax !n sx !incx
    | n < 1 || incx < 1 = -1
    | n == 1            = 0
-   | incx == 1         = findmax1 0 (abs $ sx `V.unsafeIndex` 0) 1
-   | otherwise         = findmax 0 (abs $ sx `V.unsafeIndex` 0) 1 incx
-   where
-       findmax1 !k !c !i
-          | i >= n  = k
-          | otherwise =
-              let xi = sx `V.unsafeIndex` i
-                  f x = case x > c of
-                       True -> findmax1 i x (i+1)
-                       False -> findmax1 k c (i+1)
-              in  case compare xi 0.0 of
-                      EQ -> findmax1 k c (i+1)
-                      LT -> f $ negate xi
-                      GT -> f xi
-       findmax !k !c !i !ix
-          | i >= n  = k
-          | otherwise =
-              let xi = sx `V.unsafeIndex` ix
-                  f x = case x > c of
-                       True -> findmax i x (i+1) (ix+incx)
-                       False -> findmax k c (i+1) (ix+incx)
-              in  case compare xi 0.0 of
-                      EQ -> findmax k c (i+1) (ix+incx)
-                      LT -> f $ negate xi
-                      GT -> f xi
-
+   | otherwise         = V.maxIndexBy (comparing abs) $ sampleElems n sx incx
 
 {- | O(n) sdot computes the sum of the products of elements drawn from two
  vectors according to the following specification:

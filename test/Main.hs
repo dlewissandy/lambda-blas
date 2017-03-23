@@ -35,6 +35,7 @@ tests = testGroup "BLAS"
         , iviTest "snrm2" snrm2 (Fortran.snrm2) genNiceFloat (elements [1..5])
         , iviTest "dnrm2" dnrm2 (Fortran.dnrm2) genNiceDouble (elements [1..5])
         , iviTest "isamax" (\ n u incx -> succ $ isamax n u incx ) (Fortran.isamax) genNiceFloat (elements [1..5])
+        , iviTest "idamax" (\ n u incx -> succ $ idamax n u incx ) (Fortran.idamax) genNiceDouble (elements [1..5])
         , sscalTest "sscal" sscal (elements [1..5])
         , scopyTest "scopy" scopy (elements [-5..5])
         , sswapTest "sswap" sswap (elements [-5..5])
