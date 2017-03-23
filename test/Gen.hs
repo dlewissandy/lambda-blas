@@ -17,7 +17,7 @@ module Gen
    , genEveryday
    , genVector
    , genNVector
-   , genNiceFloat
+   , genNiceFloat, genNiceDouble
    -- * Ranges
    , denormalizedRange
    , tinyRange
@@ -42,6 +42,15 @@ genNiceFloat = frequency
     ,(40,genEveryday (1::Float))
     ,(40,genNegative (genEveryday (1::Float)))
     ]
+
+-- | Generate a zero, positive everyday number or negative everyday number
+genNiceDouble :: Gen Double
+genNiceDouble = frequency
+    [(10,pure 0)
+    ,(40,genEveryday (1::Double))
+    ,(40,genNegative (genEveryday (1::Double)))
+    ]
+
 
 -- | Given a generator for the elements, construct a random vector of length
 -- between 1 and 1000.

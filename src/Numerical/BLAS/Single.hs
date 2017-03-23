@@ -11,7 +11,7 @@ module Numerical.BLAS.Single(
    snrm2,
    sdsdot,
    srot,
-   srotg,
+   rotg,srotg,drotg,
    srotm,
    srotmg,
    sscal,
@@ -354,7 +354,32 @@ where r is the signed magnitude of the vector <sa,sb>.   In the case when r
 is zero, srotg returns (0,0,1,0).
 -}
 srotg :: Float -> Float -> GivensRot Float
-srotg sa sb =
+srotg = rotg
+{- | O(1) Construct a plane Givens rotation on a deconstructed two-vector.
+Specifically:
+
+@
+drotg sa sb = ( r, secant(theta), cos(theta), sin(theta))
+@
+
+where r is the signed magnitude of the vector <sa,sb>.   In the case when r
+is zero, drotg returns (0,0,1,0).
+-}
+drotg :: Double -> Double -> GivensRot Double
+drotg = rotg
+{- | O(1) Construct a plane Givens rotation on a deconstructed two-vector.
+Specifically:
+
+@
+rotg sa sb = ( r, secant(theta), cos(theta), sin(theta))
+@
+
+where r is the signed magnitude of the vector <sa,sb>.   In the case when r
+is zero, rotg returns (0,0,1,0).
+-}
+rotg :: (Fractional a, Floating a, Ord a) => a -> a -> GivensRot a
+{-# INLINE rotg #-}
+rotg !sa !sb =
     case scale of
         0.0 -> GIVENSROT (0,0,1,0)
         _ -> case asa>asb of

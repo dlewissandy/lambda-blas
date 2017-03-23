@@ -17,6 +17,7 @@ module Foreign(
     srotmg,srotmg_unsafe,
     sscal,sscal_unsafe,
     sswap,sswap_unsafe,
+    drotg,drotg_unsafe,
     ) where
 
 import Numerical.BLAS.Types
@@ -47,6 +48,8 @@ foreign import ccall        "srot_"   srot_foreign   :: Ptr Int -> Ptr Float -> 
 foreign import ccall unsafe "srot_"   srot_unsafe_   :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Float -> IO ()
 foreign import ccall "srotg_"  srotg_foreign  :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
 foreign import ccall unsafe "srotg_" srotg_unsafe_ :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
+foreign import ccall        "drotg_"  drotg_foreign  :: Ptr Double -> Ptr Double -> Ptr Double -> Ptr Double -> IO ()
+foreign import ccall unsafe "drotg_"  drotg_unsafe_  :: Ptr Double -> Ptr Double -> Ptr Double -> Ptr Double -> IO ()
 foreign import ccall        "srotm_"  srotm_foreign  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> IO ()
 foreign import ccall unsafe "srotm_"  srotm_unsafe_  :: Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> Ptr Int -> Ptr Float -> IO ()
 foreign import ccall        "srotmg_" srotmg_foreign :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ()
@@ -109,10 +112,32 @@ sdsdot_unsafe n a px incx py incy =
 
 -- Setup a Givens rotation.
 -- please see <http://www.netlib.org/lapack/explore-html/df/d28/group__single__blas__level1_ga2f65d66137ddaeb7ae93fcc4902de3fc.html#ga2f65d66137ddaeb7ae93fcc4902de3fc>
+drotg :: Double -> Double -> IO (GivensRot Double)
+drotg = rotgHelper drotg_foreign
+drotg_unsafe :: Double -> Double -> IO (GivensRot Double)
+drotg_unsafe = rotgHelper drotg_unsafe_
 srotg :: Float -> Float -> IO (GivensRot Float)
-srotg sa sb         = ffgivens_foreign srotg_foreign sa sb
+srotg = rotgHelper srotg_foreign
 srotg_unsafe :: Float -> Float -> IO (GivensRot Float)
-srotg_unsafe sa sb  = ffgivens_foreign srotg_unsafe_ sa sb
+srotg_unsafe = rotgHelper srotg_unsafe_
+-- a helper function for marshaling functions of the type of the first argument
+rotgHelper :: (V.Storable a)
+    => (Ptr a -> Ptr a -> Ptr a -> Ptr a -> IO ())
+    -> a -> a -> IO (GivensRot a)
+{-# INLINE rotgHelper #-}
+rotgHelper f !sa !sb =
+    alloca $ \ psa ->
+    alloca $ \ psb ->
+    alloca $ \ pc ->
+    alloca $ \ ps -> do
+        poke psa sa
+        poke psb sb
+        f psa psb pc ps
+        a <- peek psa
+        b <- peek psb
+        c <- peek pc
+        s <- peek ps
+        return $ GIVENSROT (a,b,c,s)
 
 -- Setup a modified Givens rotation.
 -- please see <http://www.netlib.org/lapack/explore-html/df/d28/group__single__blas__level1_ga2f65d66137ddaeb7ae93fcc4902de3fc.html#ga2f65d66137ddaeb7ae93fcc4902de3fc>
@@ -326,22 +351,3 @@ iviivi_foreign f n px incx py incy =
         poke pincx incx
         poke pincy incy
         f pn px pincx py pincy
-
--- a helper function for marshaling functions of the type of the first argument
-ffgivens_foreign :: (Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> IO ())
-    -> Float
-    -> Float
-    -> IO (GivensRot Float)
-ffgivens_foreign f sa sb =
-    alloca $ \ psa ->
-    alloca $ \ psb ->
-    alloca $ \ pc ->
-    alloca $ \ ps -> do
-        poke psa sa
-        poke psb sb
-        f psa psb pc ps
-        a <- peek psa
-        b <- peek psb
-        c <- peek pc
-        s <- peek ps
-        return $ GIVENSROT (a,b,c,s)
