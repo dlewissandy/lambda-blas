@@ -4,8 +4,6 @@
 module Main( main ) where
 
 import qualified Data.Vector.Storable as V
-import Foreign.Marshal.Array
-import Foreign.Ptr
 import System.Random
 import Test.Tasty
 import Test.Tasty.QuickCheck
@@ -29,7 +27,8 @@ tests = testGroup "BLAS"
     , testGroup "Level-1"
         [ dotTest "sdot" sdot (elements [-5..5])
         , sdsdotTest "sdsdot" sdsdot (elements [-5..5])
-        , srotgTest "srotg" srotg
+        , rotgTest "srotg" genNiceFloat Fortran.srotg srotg
+        , rotgTest "drotg" genNiceDouble Fortran.drotg drotg
         , srotmgTest "srotmg" srotmg
         , srotmTest "srotm" srotm (elements [-5..5] `suchThat` (/=0))
         , iviTest "sasum" sasum (Fortran.sasum) (elements [1..5])
@@ -58,13 +57,10 @@ dotTest testname func genInc = testProperty testname $
     forAll (genInc) $ \ incy ->
     forAll (genNVector genNiceFloat (1+(n-1)*abs incx )) $ \ u ->
     forAll (genNVector genNiceFloat (1+(n-1)*abs incy )) $ \ v ->
-
        -- monadically marshal the vectors into arrays for use with CBLAS
-       ioProperty $
-       withArray (V.toList u) $ \ us ->
-       withArray (V.toList v) $ \ vs -> do
+       ioProperty $ do
            -- compute the expected and observed values
-           expected <- Fortran.sdot n us incx vs incy
+           expected <- Fortran.sdot n u incx v incy
            let observed = func n u incx v incy
            runTest expected observed
 
@@ -84,13 +80,10 @@ sdsdotTest testname func genInc = testProperty testname $
    forAll (genInc) $ \ incy ->
    forAll (genNVector genNiceFloat (1+(n-1)*abs incx )) $ \ u ->
    forAll (genNVector genNiceFloat (1+(n-1)*abs incy )) $ \ v ->
-
       -- monadically marshal the vectors into arrays for use with CBLAS
-      ioProperty $
-      withArray (V.toList u) $ \ us ->
-      withArray (V.toList v) $ \ vs -> do
+      ioProperty $ do
           -- compute the expected and observed values
-          expected <- Fortran.sdsdot n a us incx vs incy
+          expected <- Fortran.sdsdot n a u incx v incy
           let observed = func n a u incx v incy
           runTest expected observed
 
@@ -120,17 +113,22 @@ sswapTest testname func genInc = testProperty testname $
           runTest expected observed
 
 
--- | Evidence that the native srotg function is byte equivalent to the BLAS
+-- | Evidence that the native a rotg function is byte equivalent to the BLAS
 -- implementation.  Parameter values that are in the range of approximately
 -- +/-(epsilon/2,2/epsilon) are tested.
-srotgTest :: String -> (Float -> Float -> GivensRot Float ) -> TestTree
-srotgTest testname func = testProperty testname $
-   forAll genNiceFloat $ \ sa ->
-   forAll genNiceFloat $ \ sb ->
+rotgTest :: (Eq a,Show a)
+    => String  -- The test name
+    -> Gen a   -- a generator for elements in the underlying field
+    -> ( a -> a -> IO (GivensRot a))  -- The FORTRAN reference function
+    -> (a -> a -> GivensRot a )       -- The Test function.
+    -> TestTree
+rotgTest testname gen ref func = testProperty testname $
+   forAll gen $ \ sa ->
+   forAll gen $ \ sb ->
       -- monadically marshal the vectors into arrays for use with CBLAS
       ioProperty $ do
           -- compute the expected and observed values
-          expected <- Fortran.srotg sa sb
+          expected <- ref sa sb
           let observed = func sa sb
           runTest expected observed
 
@@ -207,7 +205,7 @@ srotmTest testname func genInc = testProperty testname $
 -- having elements that are in the range of approximately (epsilon/2,2/epsilon)
 iviTest :: (Eq a, Show a) => String
         -> (Int -> V.Vector Float -> Int -> a)
-        -> (Int -> Ptr Float -> Int -> IO a)
+        -> (Int -> V.Vector Float -> Int -> IO a)
         -> Gen Int
         -> TestTree
 iviTest testname func funcIO genInc = testProperty testname $
@@ -217,10 +215,9 @@ iviTest testname func funcIO genInc = testProperty testname $
    forAll (genInc) $ \ incx ->
    forAll (genNVector (genNiceFloat) (1+(n-1)*abs incx )) $ \ u ->
    -- monadically marshal the vectors into arrays for use with CBLAS
-      ioProperty $
-      withArray (V.toList u) $ \ us -> do
+      ioProperty $ do
           -- compute the expected and observed values
-          expected <- funcIO n us incx
+          expected <- funcIO n u incx
           let observed = func n u incx
           runTest expected observed
 

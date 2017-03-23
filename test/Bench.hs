@@ -5,241 +5,123 @@
 module Main( main ) where
 
 import qualified Data.Vector.Storable as V
-import Foreign.Marshal.Array
 import Test.QuickCheck.Gen
-import Foreign.Ptr
 import Criterion.Main
+import Control.DeepSeq
 -- | This package
 import Numerical.BLAS.Single
-import Numerical.BLAS.Types
 -- | This test suite
 import Gen
-import qualified Foreign as FORTRAN
+import qualified Foreign as F
 
 main :: IO ()
 main = do
-    let n = 32767
-    u<- generate $ genNVector (genFloat genEveryday) n
-    v<- generate $ genNVector (genFloat genEveryday) n
-    let xs = V.toList u
-        ys = V.toList v
-    a<- generate $ genFloat genEveryday
-    b<- generate $ genFloat genEveryday
-    withArray xs $ \ us ->
-       withArray ys $ \ vs ->
-        defaultMain [ level1_benchs n a b u v us vs ]
+    -- GENERATE RANDOM DATA ON WHICH TO EVALUATE THE BENCHMARKS
+    sx<- generate $ genNVector (genFloat genEveryday) nmax
+    sy<- generate $ genNVector (genFloat genEveryday) nmax
+    --dx<- generate $ genNVector (genDouble genEveryday) nmax
+    --dy<- generate $ genNVector (genDouble genEveryday) nmax
+    sa<- generate $ genFloat genEveryday
+    sb<- generate $ genFloat genEveryday
+    sc<- generate $ genFloat genEveryday
+    sd<- generate $ genFloat genEveryday
+    da<- generate $ genDouble genEveryday
+    db<- generate $ genDouble genEveryday
+    -- DEFINE THE WRAPPER FUNCTIONS USED TO APPLY THE RANDOM VALUES
+    let dotHelper  f x y !n !inc = f n x inc y inc
+        normHelper f x !n !inc = f n x inc
+        scalHelper f !a x !n !inc = f n a (trim n x inc) inc
+        axpyHelper f !a x y !n !inc = f n a (trim n x inc) inc (trim n y inc) inc
+        copyHelper f x y !n !inc = f n (trim n x inc) inc (trim n y inc) inc
+        rotHelper f !a !b x y !n !inc = f n (trim n x inc) inc (trim n y inc) inc a b
+        rotmHelper f !z x y !n !inc = f z n x inc y inc
+        trim n x inc = V.unsafeTake (1+(n-1)*inc) x
+        flags = srotmg sa sb sc sd
+    -- RUN THE BENCHMARKS
+    defaultMain [  bgroup "level-1" [
+        vectorbench "sdot"   (dotHelper sdot sx sy)
+                             (dotHelper F.sdot_unsafe sx sy)
+                             (dotHelper F.sdot sx sy),
+        vectorbench "sasum"  (normHelper sasum sx)
+                             (normHelper F.sasum_unsafe sx)
+                             (normHelper F.sasum sx),
+        vectorbench "snrm2"  (normHelper snrm2 sx)
+                             (normHelper F.snrm2_unsafe sx)
+                             (normHelper F.snrm2 sx),
+        vectorbench "isamax" (normHelper isamax sx)
+                             (normHelper F.isamax_unsafe sx)
+                             (normHelper F.isamax sx),
+        vectorbench "sdsdot" (axpyHelper sdsdot sa sx sy)
+                             (axpyHelper F.sdsdot_unsafe sa sx sy)
+                             (axpyHelper F.sdsdot sa sx sy),
+        vectorbench "saxpy"  (axpyHelper saxpy sa sx sy)
+                             (axpyHelper F.saxpy_unsafe sa sx sy)
+                             (axpyHelper F.saxpy sa sx sy),
+        scalarbench2 "srotg" srotg F.srotg_unsafe F.srotg sa sb,
+        scalarbench2 "drotg" drotg F.drotg_unsafe F.drotg da db,
+        scalarbench4 "srotmg" srotmg F.srotmg_unsafe F.srotmg sa sb sc sd,
+        vectorbench "sscal"  (scalHelper sscal sa sx)
+                             (scalHelper F.sscal_unsafe sa sx)
+                             (scalHelper F.sscal sa sx),
+        vectorbench "scopy"  (copyHelper scopy sx sy)
+                             (copyHelper F.scopy_unsafe sx sy)
+                             (copyHelper F.scopy sx sy),
+        vectorbench "sswap"  (copyHelper sswap sx sy)
+                             (copyHelper F.sswap_unsafe sx sy)
+                             (copyHelper F.sswap sx sy),
+        vectorbench "srot"   (rotHelper srot sa sb sx sy)
+                             (rotHelper F.srot_unsafe sa sb sx sy)
+                             (rotHelper F.srot sa sb sx sy),
+        vectorbench "srotm"  (rotmHelper srotm flags sx sy)
+                             (rotmHelper F.srotm_unsafe flags sx sy)
+                             (rotmHelper F.srotm flags sx sy)
+        ]]
+    where nmax = 32767
 
--- | Level 1 BLAS benchmarks
-level1_benchs :: Int -> Float -> Float -> V.Vector Float -> V.Vector Float
-           -> Ptr Float -> Ptr Float -> Benchmark
-level1_benchs n a b u v us vs = bgroup "level-1"
-    [ sdot_benchs n u v us vs
-    , sasum_benchs n u us
-    , snrm2_benchs n u us
-    , isamax_benchs n u us
-    , sdsdot_benchs n a u v us vs
-    , srotg_benchs (V.head u) (V.head v)
-    , srotmg_benchs a (V.unsafeIndex u 0) (V.unsafeIndex u 1) (V.unsafeIndex u 2)
-    , sscal_benchs n a u
-    , scopy_benchs n u v
-    , sswap_benchs n u v
-    , srot_benchs n u v (cos a) (sin a)
-    , srotm_benchs flags n u v
-    , saxpy_benchs n a u v
-    ]
-    where flags = srotmg 1 1 a b
--- | Vector lengths between 1 and a specified maximum, sampled
--- in nice intervals for plotting logarithmically.
-lengths :: Int -> [ Int ]
-lengths nmax = let zs = [1..9]++map (*10) zs in takeWhile (<nmax) zs
-
--- Benchmarks for the sdot function
-sdot_benchs :: Int -> V.Vector Float -> V.Vector Float
-    -> Ptr Float -> Ptr Float -> Benchmark
-sdot_benchs nmax u v us vs = bgroup "sdot"
-   [ bgroup "stream" [ benchPure sdot n u v inc | inc<-[1,-1], n<-lengths nmax]
-   , bgroup "unsafe" [ benchIO FORTRAN.sdot_unsafe n inc | inc<-[1,-1], n<-lengths nmax]
-   , bgroup "safe"   [ benchIO FORTRAN.sdot n inc | inc<-[1,-1], n<-lengths nmax]
-   ]
-   where
-   benchPure f !n x y !inc = bench (showTestCase n inc) $
-       nf (\ (a,b,c,d,e) -> f a b c d e ) (n,x,inc,y,inc)
-   benchIO f !n !inc = bench (showTestCase n inc) $
-       nfIO $ f n us inc vs inc
-   showTestCase n inc = "sdot("++show n++",u,"++show inc++",v,"++show inc++")"
-
--- | benchmarks for the sasum function
-sasum_benchs :: Int -> V.Vector Float -> Ptr Float -> Benchmark
-sasum_benchs nmax u us = bgroup "sasum"
-  [ bgroup "stream"   [ benchPure sasum n u inc | inc<-[1,-1], n<-lengths nmax]
-  , bgroup "unsafe"   [ benchIO FORTRAN.sasum_unsafe n inc | inc<-[1,-1], n<-lengths nmax]
-  , bgroup "safe"     [ benchIO FORTRAN.sasum n inc | inc<-[1,-1], n<-lengths nmax]
+-- | benchmarks for blas functions
+vectorbench :: (NFData a)
+    => String                 -- the name of the test group
+    -> ( Int -> Int -> a )    -- the pure version of the function
+    -> ( Int -> Int -> IO a)  -- the unsafe foreign version of the function
+    -> ( Int -> Int -> IO a)  -- the safe foreign version of the function
+    -> Benchmark
+vectorbench testname func unsafe safe = bgroup testname
+  [ bgroup "stream"   [ benchPure func c | c <-cs]
+  , bgroup "unsafe"   [ benchIO unsafe n inc | (n,inc)<-cs]
+  , bgroup "safe"     [ benchIO safe n inc  | (n,inc)<-cs]
   ]
   where
-   benchPure f !n x !inc = bench (showTestCase n inc) $
-       nf (\ (a,b,c) -> f a b c ) (n,x,inc)
-   benchIO f !n !inc = bench (showTestCase n inc) $
-       nfIO $ f n us inc
-   showTestCase n inc = "sasum("++show n++",u,"++show inc++")"
+  lengths = let zs = [1..9]++map (*10) zs in takeWhile (<32767) zs
+  cs = [ (n,inc) | inc<-[1,10,100],n<-lengths,(n-1)*inc<32767]
+  benchPure f c@(!n,!inc) = bench (showTestCase n inc) $ nf (uncurry f) c
+  benchIO f !n !inc = bench (showTestCase n inc) $ nfIO $ f n inc
+  showTestCase n inc = testname++"("++show n++","++show inc++")"
 
--- | benchmarks for the sscal function
-sscal_benchs :: Int -> Float -> V.Vector Float -> Benchmark
-sscal_benchs nmax !a u = bgroup "sscal"
-  [ bgroup "stream"   [ benchPure sscal n inc | (n,inc)<-cs]
-  , bgroup "unsafe"   [ benchIO FORTRAN.sscal_unsafe n inc | (n,inc)<-cs]
-  , bgroup "safe"     [ benchIO FORTRAN.sscal n inc | (n,inc)<-cs]
+-- | benchmarks for blas functions that take two scalar arguments
+scalarbench2 :: (NFData b)
+    => String                 -- the name of the test group
+    -> ( a -> a -> b )    -- the pure version of the function
+    -> ( a -> a -> IO b)  -- the unsafe foreign version of the function
+    -> ( a -> a -> IO b)  -- the safe foreign version of the function
+    -> a
+    -> a
+    -> Benchmark
+scalarbench2 testname func unsafe safe sa sb = bgroup testname
+  [ bench "pure" $ nf (uncurry func) (sa,sb)
+  , bench "unsafe" $ nfIO $ unsafe sa sb
+  , bench "safe"   $ nfIO $ safe sa sb
   ]
-  where
-   cs = [ (n,inc) | inc<-[1,10,100],n<-lengths nmax,(n-1)*inc<nmax]
-   benchPure f !n !inc = bench (showTestCase n inc) $
-          nf (\ (aa,b,c,d) -> f aa b c d) (n,a,V.take (1+(n-1)*inc) u,inc)
-   benchIO f !n !inc = bench (showTestCase n inc) $
-       nfIO $ f n a (V.take (1+(n-1)*inc) u) inc
-   showTestCase n inc = "sscal("++show n++",a,u,"++show inc++")"
 
--- | benchmarks for the scopy function
-scopy_benchs :: Int -> V.Vector Float -> V.Vector Float -> Benchmark
-scopy_benchs nmax u v = bgroup "scopy"
-  [ bgroup "stream"   [ benchPure scopy n inc | (n,inc)<-cs]
-  , bgroup "unsafe"   [ benchIO FORTRAN.scopy_unsafe n inc | (n,inc)<-cs]
-  , bgroup "safe"     [ benchIO FORTRAN.scopy n inc | (n,inc)<-cs]
+-- | benchmarks for blas functions that take four scalar arguments
+scalarbench4 :: (NFData b)
+    => String                 -- the name of the test group
+    -> ( a -> a -> a -> a -> b )    -- the pure version of the function
+    -> ( a -> a -> a -> a -> IO b)  -- the unsafe foreign version of the function
+    -> ( a -> a -> a -> a -> IO b)  -- the safe foreign version of the function
+    -> a -> a -> a -> a
+    -> Benchmark
+scalarbench4 testname func unsafe safe sa sb sc sd = bgroup testname
+  [ bench "pure" $ nf (\(a,b,c,d) -> func a b c d) (sa,sb,sc,sd)
+  , bench "unsafe" $ nfIO $ unsafe sa sb sc sd
+  , bench "safe"   $ nfIO $ safe sa sb sc sd
   ]
-  where
-  cs = [ (n,inc) | inc<-[1,10,100],n<-lengths nmax,(n-1)*inc<nmax]
-  benchPure f !n !inc = bench (showTestCase n inc) $
-          nf (\ (a,b,c,d,e) -> f a b c d e) (n,V.unsafeTake (1+(n-1)*inc) u,inc,V.unsafeTake (1+(n-1)*inc) v,inc)
-  benchIO f !n !inc = bench (showTestCase n inc) $
-       nfIO $ f n (V.unsafeTake (1+(n-1)*inc) u) inc (V.unsafeTake (1+(n-1)*inc) v) inc
-  showTestCase n inc = "scopy("++show n++",u,"++show inc++",v,"++show inc++")"
-
--- | benchmarks for the srot function
-srot_benchs :: Int -> V.Vector Float -> V.Vector Float -> Float -> Float -> Benchmark
-srot_benchs nmax u v c s = bgroup "srot"
-  [ bgroup "stream"   [ benchPure srot n inc | (n,inc)<-cs]
-  , bgroup "unsafe"   [ benchIO FORTRAN.srot_unsafe n inc | (n,inc)<-cs]
-  , bgroup "safe"     [ benchIO FORTRAN.srot n inc | (n,inc)<-cs]
-  ]
-  where
-  cs = [ (n,inc) | inc<-[1,10,100],n<-lengths nmax,(n-1)*inc<nmax]
-  benchPure f !n !inc = bench (showTestCase n inc) $
-          nf (\ (a,b,c',d,e,g,h) -> f a b c' d e g h) (n,V.unsafeTake (1+(n-1)*inc) u,inc,V.unsafeTake (1+(n-1)*inc) v,inc,c,s)
-  benchIO f !n !inc = bench (showTestCase n inc) $
-       nfIO $ f n (V.unsafeTake (1+(n-1)*inc) u) inc (V.unsafeTake (1+(n-1)*inc) v) inc c s
-  showTestCase n inc = "srot("++show n++",u,"++show inc++",v,"++show inc++",c,s)"
-
--- | benchmarks for the srot function
-srotm_benchs :: ModGivensRot Float -> Int -> V.Vector Float -> V.Vector Float -> Benchmark
-srotm_benchs flags nmax u v = bgroup "srotm"
-  [ bgroup "stream"   [ benchPure srotm n inc | (n,inc)<-cs]
-  , bgroup "unsafe"   [ benchIO FORTRAN.srotm_unsafe n inc | (n,inc)<-cs]
-  , bgroup "safe"     [ benchIO FORTRAN.srotm n inc | (n,inc)<-cs]
-  ]
-  where
-  cs = [ (n,inc) | inc<-[1,10,100],n<-lengths nmax,(n-1)*inc<nmax]
-  benchPure f !n !inc = bench (showTestCase n inc) $
-          nf (\ (a,b,c,d,e,g) -> f a b c d e g) (flags,n,V.unsafeTake (1+(n-1)*inc) u,inc,V.unsafeTake (1+(n-1)*inc) v,inc)
-  benchIO f !n !inc = bench (showTestCase n inc) $
-       nfIO $ f flags n (V.unsafeTake (1+(n-1)*inc) u) inc (V.unsafeTake (1+(n-1)*inc) v) inc
-  showTestCase n inc = "srotm("++show n++",u,"++show inc++",v,"++show inc++",flags)"
-
-
--- | benchmarks for the sswap function
-sswap_benchs :: Int -> V.Vector Float -> V.Vector Float -> Benchmark
-sswap_benchs nmax u v = bgroup "sswap"
-  [ bgroup "stream"   [ benchPure sswap n inc | (n,inc)<-cs]
-  , bgroup "unsafe"   [ benchIO FORTRAN.sswap_unsafe n inc | (n,inc)<-cs]
-  , bgroup "safe"     [ benchIO FORTRAN.sswap n inc | (n,inc)<-cs]
-  ]
-  where
-   cs = [ (n,inc) | inc<-[1,10,100],n<-lengths nmax,(n-1)*inc<nmax]
-   benchPure f !n !inc = bench (showTestCase n inc) $
-          nf (\ (a,b,c,d,e) -> f a b c d e) (n,V.unsafeTake (1+(n-1)*inc) u,inc,V.unsafeTake (1+(n-1)*inc) v,inc)
-   benchIO f !n !inc = bench (showTestCase n inc) $
-       nfIO $ f n (V.unsafeTake (1+(n-1)*inc) u) inc (V.unsafeTake (1+(n-1)*inc) v) inc
-   showTestCase n inc = "sswap("++show n++",u,"++show inc++",v,"++show inc++")"
-
--- | benchmarks for the snrm2 function
-snrm2_benchs :: Int -> V.Vector Float -> Ptr Float -> Benchmark
-snrm2_benchs nmax u us = bgroup "snrm2"
-  [ bgroup "stream"   [ benchPure snrm2 n u inc | inc<-[1,-1], n<-lengths nmax]
-  , bgroup "unsafe"   [ benchIO FORTRAN.snrm2_unsafe n inc | inc<-[1,-1], n<-lengths nmax]
-  , bgroup "safe"     [ benchIO FORTRAN.snrm2 n inc | inc<-[1,-1], n<-lengths nmax]
-  ]
-  where
-   benchPure f !n x !inc = bench (showTestCase n inc) $
-       nf (\ (a,b,c) -> f a b c ) (n,x,inc)
-   benchIO f !n !inc = bench (showTestCase n inc) $
-       nfIO $ f n us inc
-   showTestCase n inc = "snrm2("++show n++",u,"++show inc++")"
-
--- | benchmarks for the isamax function
-isamax_benchs :: Int -> V.Vector Float -> Ptr Float -> Benchmark
-isamax_benchs nmax u us = bgroup "isamax"
-  [ bgroup "stream"   [ benchPure isamax n u inc | inc<-[1,-1], n<-lengths nmax]
-  , bgroup "unsafe"   [ benchIO FORTRAN.isamax_unsafe n inc | inc<-[1,-1], n<-lengths nmax]
-  , bgroup "safe"     [ benchIO FORTRAN.isamax n inc | inc<-[1,-1], n<-lengths nmax]
-  ]
-  where
-   benchPure f !n x !inc = bench (showTestCase n inc) $
-       nf (\ (a,b,c) -> f a b c ) (n,x,inc)
-   benchIO f !n !inc = bench (showTestCase n inc) $
-       nfIO $ f n us inc
-   showTestCase n inc = "isamax("++show n++",u,"++show inc++")"
-
--- Benchmarks for the sdsdot function
-sdsdot_benchs :: Int -> Float -> V.Vector Float -> V.Vector Float
-    -> Ptr Float -> Ptr Float -> Benchmark
-sdsdot_benchs nmax a u v us vs = bgroup "sdsdot"
-   [ bgroup "stream"   [ benchPure sdsdot n a u v inc | inc<-[1,-1], n<-lengths nmax]
-   , bgroup "unsafe"   [ benchIO FORTRAN.sdsdot_unsafe n inc | inc<-[1,-1], n<-lengths nmax]
-   , bgroup "safe"     [ benchIO FORTRAN.sdsdot n inc | inc<-[1,-1], n<-lengths nmax]
-   ]
-   where
-   benchPure f !n !sb x y !inc = bench (showTestCase n inc) $
-       nf (\ (aa,b,c,d,e,g) -> f aa b c d e g) (n,sb,x,inc,y,inc)
-   benchIO f !n !inc = bench (showTestCase n inc) $
-       nfIO $ f n a us inc vs inc
-   showTestCase n inc = "sdsdot("++show n++",a,u,"++show inc++",v,"++show inc++")"
-
--- | benchmarks for the isamax function
-srotg_benchs :: Float -> Float -> Benchmark
-srotg_benchs !sa !sb = bgroup "srotg"
-  [ bgroup "haskell"  [ benchPure srotg sa sb]
-  , bgroup "unsafe"   [ benchIO FORTRAN.srotg_unsafe ]
-  , bgroup "safe"     [ benchIO FORTRAN.srotg ]
-  ]
-  where
-   benchPure f a b = bench showTestCase $
-       nf (uncurry f) (a,b)
-   benchIO f = bench (showTestCase) $
-       nfIO $ f sa sb
-   showTestCase  = "srotg(sa,sb)"
-
--- | benchmarks for the srotmg function
-srotmg_benchs :: Float -> Float -> Float -> Float -> Benchmark
-srotmg_benchs !sd1 !sd2 !sx1 !sy1 = bgroup "srotmg"
-  [ bgroup "haskell"  [ benchPure srotmg sd1 sd2 sx1 sy1]
-  , bgroup "unsafe"   [ benchIO FORTRAN.srotmg_unsafe ]
-  , bgroup "safe"     [ benchIO FORTRAN.srotmg ]
-  ]
-  where
-   benchPure f a b c d = bench showTestCase $
-       nf (\ (aa,bb,cc,dd) -> f aa bb cc dd) (a,b,c,d)
-   benchIO f = bench (showTestCase) $
-       nfIO $ f sd1 sd2 sx1 sy1
-   showTestCase  = "srotmg(sd1,sd2,sx1,sx2)"
-
--- | benchmarks for the srot function
-saxpy_benchs :: Int -> Float -> V.Vector Float -> V.Vector Float -> Benchmark
-saxpy_benchs !nmax !aa u v = bgroup "saxpy"
-  [ bgroup "stream"   [ benchPure saxpy n inc | (n,inc)<-cs]
-  , bgroup "unsafe"   [ benchIO FORTRAN.saxpy_unsafe n inc | (n,inc)<-cs]
-  , bgroup "safe"     [ benchIO FORTRAN.saxpy n inc | (n,inc)<-cs]
-  ]
-  where
-  cs = [ (n,inc) | inc<-[1,10,100],n<-lengths nmax,(n-1)*inc<nmax]
-  benchPure f !n !inc = bench (showTestCase n inc) $
-          nf (\ (a,b,c,d,e,g) -> f a b c d e g) (n,aa,V.unsafeTake (1+(n-1)*inc) u,inc,V.unsafeTake (1+(n-1)*inc) v,inc)
-  benchIO f !n !inc = bench (showTestCase n inc) $
-       nfIO $ f n aa (V.unsafeTake (1+(n-1)*inc) u) inc (V.unsafeTake (1+(n-1)*inc) v) inc
-  showTestCase n inc = "saxpy("++show n++",a,u,"++show inc++",v,"++show inc++")"

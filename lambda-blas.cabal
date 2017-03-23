@@ -63,7 +63,7 @@ benchmark blas-benchmark
     main-is: Bench.hs
     other-modules:    Gen, Foreign
     build-depends:    base, primitive, vector, QuickCheck,
-        random, criterion, lambda-blas
+        random, criterion, lambda-blas, deepseq
     type: exitcode-stdio-1.0
     extra-libraries: blas
     ghc-options: -Wall -Werror -O2
