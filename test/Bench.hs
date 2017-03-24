@@ -27,6 +27,8 @@ main = do
     sd<- generate $ genFloat genEveryday
     da<- generate $ genDouble genEveryday
     db<- generate $ genDouble genEveryday
+    dc<- generate $ genDouble genEveryday
+    dd<- generate $ genDouble genEveryday
     -- DEFINE THE WRAPPER FUNCTIONS USED TO APPLY THE RANDOM VALUES
     let dotHelper  f x y !n !inc = f n x inc y inc
         normHelper f x !n !inc = f n x inc
@@ -36,7 +38,8 @@ main = do
         rotHelper f !a !b x y !n !inc = f n (trim n x inc) inc (trim n y inc) inc a b
         rotmHelper f !z x y !n !inc = f z n x inc y inc
         trim n x inc = V.unsafeTake (1+(n-1)*inc) x
-        flags = srotmg sa sb sc sd
+        flags = rotmg sa sb sc sd
+        dflags = rotmg da db dc dd
     -- RUN THE BENCHMARKS
     defaultMain [  bgroup "level-1" [
         vectorbench "sdot"   (dotHelper dot sx sy)
@@ -74,7 +77,8 @@ main = do
                              (axpyHelper F.daxpy da dx dy),
         scalarbench2 "srotg" rotg F.srotg_unsafe F.srotg sa sb,
         scalarbench2 "drotg" rotg F.drotg_unsafe F.drotg da db,
-        scalarbench4 "srotmg" srotmg F.srotmg_unsafe F.srotmg sa sb sc sd,
+        scalarbench4 "srotmg" rotmg F.srotmg_unsafe F.srotmg sa sb sc sd,
+        scalarbench4 "drotmg" rotmg F.drotmg_unsafe F.drotmg da db dc dd,
         vectorbench "sscal"  (scalHelper scal sa sx)
                              (scalHelper F.sscal_unsafe sa sx)
                              (scalHelper F.sscal sa sx),
@@ -93,12 +97,18 @@ main = do
         vectorbench "dswap"  (copyHelper swap dx dy)
                              (copyHelper F.dswap_unsafe dx dy)
                              (copyHelper F.dswap dx dy),
-        vectorbench "srot"   (rotHelper srot sa sb sx sy)
+        vectorbench "srot"   (rotHelper rot sa sb sx sy)
                              (rotHelper F.srot_unsafe sa sb sx sy)
                              (rotHelper F.srot sa sb sx sy),
-        vectorbench "srotm"  (rotmHelper srotm flags sx sy)
+        vectorbench "drot"   (rotHelper rot da db dx dy)
+                             (rotHelper F.drot_unsafe da db dx dy)
+                             (rotHelper F.drot da db dx dy),
+        vectorbench "srotm"  (rotmHelper rotm flags sx sy)
                              (rotmHelper F.srotm_unsafe flags sx sy)
-                             (rotmHelper F.srotm flags sx sy)
+                             (rotmHelper F.srotm flags sx sy),
+        vectorbench "drotm"  (rotmHelper rotm dflags dx dy)
+                             (rotmHelper F.drotm_unsafe dflags dx dy)
+                             (rotmHelper F.drotm dflags dx dy)
         ]]
     where nmax = 32767
 
@@ -110,7 +120,7 @@ vectorbench :: (NFData a)
     -> ( Int -> Int -> IO a)  -- the safe foreign version of the function
     -> Benchmark
 vectorbench testname func unsafe safe = bgroup testname
-  [ bgroup "stream"   [ benchPure func c | c <-cs]
+  [ bgroup "pure"   [ benchPure func c | c <-cs]
   , bgroup "unsafe"   [ benchIO unsafe n inc | (n,inc)<-cs]
   , bgroup "safe"     [ benchIO safe n inc  | (n,inc)<-cs]
   ]
