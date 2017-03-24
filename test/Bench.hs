@@ -20,7 +20,7 @@ main = do
     sx<- generate $ genNVector (genFloat genEveryday) nmax
     sy<- generate $ genNVector (genFloat genEveryday) nmax
     dx<- generate $ genNVector (genDouble genEveryday) nmax
-    --dy<- generate $ genNVector (genDouble genEveryday) nmax
+    dy<- generate $ genNVector (genDouble genEveryday) nmax
     sa<- generate $ genFloat genEveryday
     sb<- generate $ genFloat genEveryday
     sc<- generate $ genFloat genEveryday
@@ -39,9 +39,12 @@ main = do
         flags = srotmg sa sb sc sd
     -- RUN THE BENCHMARKS
     defaultMain [  bgroup "level-1" [
-        vectorbench "sdot"   (dotHelper sdot sx sy)
+        vectorbench "sdot"   (dotHelper dot sx sy)
                              (dotHelper F.sdot_unsafe sx sy)
                              (dotHelper F.sdot sx sy),
+        vectorbench "ddot"   (dotHelper dot dx dy)
+                             (dotHelper F.ddot_unsafe dx dy)
+                             (dotHelper F.ddot dx dy),
         vectorbench "sasum"  (normHelper asum sx)
                              (normHelper F.sasum_unsafe sx)
                              (normHelper F.sasum sx),
@@ -63,21 +66,33 @@ main = do
         vectorbench "sdsdot" (axpyHelper sdsdot sa sx sy)
                              (axpyHelper F.sdsdot_unsafe sa sx sy)
                              (axpyHelper F.sdsdot sa sx sy),
-        vectorbench "saxpy"  (axpyHelper saxpy sa sx sy)
+        vectorbench "saxpy"  (axpyHelper axpy sa sx sy)
                              (axpyHelper F.saxpy_unsafe sa sx sy)
                              (axpyHelper F.saxpy sa sx sy),
+        vectorbench "daxpy"  (axpyHelper axpy da dx dy)
+                             (axpyHelper F.daxpy_unsafe da dx dy)
+                             (axpyHelper F.daxpy da dx dy),
         scalarbench2 "srotg" rotg F.srotg_unsafe F.srotg sa sb,
         scalarbench2 "drotg" rotg F.drotg_unsafe F.drotg da db,
         scalarbench4 "srotmg" srotmg F.srotmg_unsafe F.srotmg sa sb sc sd,
-        vectorbench "sscal"  (scalHelper sscal sa sx)
+        vectorbench "sscal"  (scalHelper scal sa sx)
                              (scalHelper F.sscal_unsafe sa sx)
                              (scalHelper F.sscal sa sx),
-        vectorbench "scopy"  (copyHelper scopy sx sy)
+        vectorbench "dscal"  (scalHelper scal da dx)
+                             (scalHelper F.dscal_unsafe da dx)
+                             (scalHelper F.dscal da dx),
+        vectorbench "scopy"  (copyHelper copy sx sy)
                              (copyHelper F.scopy_unsafe sx sy)
                              (copyHelper F.scopy sx sy),
-        vectorbench "sswap"  (copyHelper sswap sx sy)
+        vectorbench "dcopy"  (copyHelper copy dx dy)
+                             (copyHelper F.dcopy_unsafe dx dy)
+                             (copyHelper F.dcopy dx dy),
+        vectorbench "sswap"  (copyHelper swap sx sy)
                              (copyHelper F.sswap_unsafe sx sy)
                              (copyHelper F.sswap sx sy),
+        vectorbench "dswap"  (copyHelper swap dx dy)
+                             (copyHelper F.dswap_unsafe dx dy)
+                             (copyHelper F.dswap dx dy),
         vectorbench "srot"   (rotHelper srot sa sb sx sy)
                              (rotHelper F.srot_unsafe sa sb sx sy)
                              (rotHelper F.srot sa sb sx sy),

@@ -25,7 +25,8 @@ tests = testGroup "BLAS"
     [ genTests "Double" (1::Double) -- test the random number generators for IEEE Doubles
     , genTests "Float"  (1::Float)  -- test the random number generators for IEEE Singles
     , testGroup "Level-1"
-        [ dotTest "sdot" sdot (elements [-5..5])
+        [ dotTest "sdot" dot Fortran.sdot genNiceFloat (elements [-5..5])
+        , dotTest "ddot" dot Fortran.ddot genNiceDouble (elements [-5..5])
         , sdsdotTest "sdsdot" sdsdot (elements [-5..5])
         , rotgTest "srotg" genNiceFloat Fortran.srotg rotg
         , rotgTest "drotg" genNiceDouble Fortran.drotg rotg
@@ -37,33 +38,40 @@ tests = testGroup "BLAS"
         , iviTest "dnrm2" nrm2 (Fortran.dnrm2) genNiceDouble (elements [1..5])
         , iviTest "isamax" (\ n u incx -> succ $ iamax n u incx ) (Fortran.isamax) genNiceFloat (elements [1..5])
         , iviTest "idamax" (\ n u incx -> succ $ iamax n u incx ) (Fortran.idamax) genNiceDouble (elements [1..5])
-        , sscalTest "sscal" sscal (elements [1..5])
-        , scopyTest "scopy" scopy (elements [-5..5])
-        , sswapTest "sswap" sswap (elements [-5..5])
+        , scalTest "sscal" scal Fortran.sscal genNiceFloat  (elements [1..5])
+        , scalTest "dscal" scal Fortran.dscal genNiceDouble (elements [1..5])
+        , copyTest "scopy" copy Fortran.scopy genNiceFloat  (elements [-5..5])
+        , copyTest "dcopy" copy Fortran.dcopy genNiceDouble (elements [-5..5])
+        , swapTest "sswap" swap Fortran.sswap genNiceFloat  (elements [-5..5])
+        , swapTest "dswap" swap Fortran.dswap genNiceDouble (elements [-5..5])
         , srotTest "srot" srot (elements [-5,5])
-        , saxpyTest "saxpy" saxpy (elements [-5,5])
+        , axpyTest "saxpy" axpy Fortran.saxpy genNiceFloat  (elements [-5,5])
+        , axpyTest "daxpy" axpy Fortran.daxpy genNiceDouble (elements [-5,5])
         ]
     ]
 
 -- | Evidence that the native sdot function is byte equivalent to the CBLAS
 -- implementation.  Vectors of length 1-10 are tested having elements that are
 -- in the range of approximately (epsilon/2,2/epsilon)
-dotTest :: String
-         -> (Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float)
-         -> Gen Int
-         -> TestTree
-dotTest testname func genInc = testProperty testname $
+dotTest :: (V.Storable a, Eq a, Show a)
+    => String
+    -> (Int -> V.Vector a -> Int -> V.Vector a -> Int -> a)
+    -> (Int -> V.Vector a -> Int -> V.Vector a -> Int -> IO a)
+    -> Gen a
+    -> Gen Int
+    -> TestTree
+dotTest testname func ref gen genInc = testProperty testname $
     -- Choose the length of the vector
     forAll (choose (1,100)) $ \ n ->
     -- Randomly generate two vectors of the chosen length
     forAll (genInc) $ \ incx ->
     forAll (genInc) $ \ incy ->
-    forAll (genNVector genNiceFloat (1+(n-1)*abs incx )) $ \ u ->
-    forAll (genNVector genNiceFloat (1+(n-1)*abs incy )) $ \ v ->
+    forAll (genNVector gen (1+(n-1)*abs incx )) $ \ u ->
+    forAll (genNVector gen (1+(n-1)*abs incy )) $ \ v ->
        -- monadically marshal the vectors into arrays for use with CBLAS
        ioProperty $ do
            -- compute the expected and observed values
-           expected <- Fortran.sdot n u incx v incy
+           expected <- ref n u incx v incy
            let observed = func n u incx v incy
            runTest expected observed
 
@@ -93,11 +101,14 @@ sdsdotTest testname func genInc = testProperty testname $
 -- | Evidence that the native sswap function is byte equivalent to the BLAS
 -- implementation.  Vectors of length 1-100 are tested having elements that are
 -- in the range of approximately +/-(epsilon/2,2/epsilon)
-sswapTest :: String
-        -> (Int ->  V.Vector Float -> Int -> V.Vector Float -> Int -> (V.Vector Float, V.Vector Float))
-        -> Gen Int
-        -> TestTree
-sswapTest testname func genInc = testProperty testname $
+swapTest :: (V.Storable a, Eq a, Show a)
+    => String
+    -> (Int ->  V.Vector a -> Int -> V.Vector a -> Int -> (V.Vector a, V.Vector a))
+    -> (Int ->  V.Vector a -> Int -> V.Vector a -> Int -> IO (V.Vector a, V.Vector a))
+    -> Gen a
+    -> Gen Int
+    -> TestTree
+swapTest testname func ref gen genInc = testProperty testname $
    -- Choose the length of the vector.   Vectors will have a length of (1+(n-1)*abs inc)+m)
    forAll (choose (1,5)) $ \ n ->
    forAll (choose (0,2)) $ \ mx ->
@@ -105,16 +116,14 @@ sswapTest testname func genInc = testProperty testname $
    -- Randomly generate two vectors of the chosen length
    forAll (genInc `suchThat` (/=0)) $ \ incx ->
    forAll (genInc `suchThat` (/=0)) $ \ incy ->
-   forAll (pure $ V.take (mx+1+(n-1)*abs incx) $ V.fromList [1..100]) $ \ u -> -- (genNVector genNiceFloat (mx+1+(n-1)*abs incx )) $ \ u ->
-   forAll (pure $ V.take (my+1+(n-1)*abs incy) $ V.fromList [-100..0]) $ \ v -> -- (genNVector genNiceFloat (my+1+(n-1)*abs incy )) $ \ v ->
-
+   forAll (genNVector gen (mx+1+(n-1)*abs incx )) $ \ u ->
+   forAll (genNVector gen (my+1+(n-1)*abs incy )) $ \ v ->
       -- monadically marshal the vectors into arrays for use with CBLAS
       ioProperty $ do
           -- compute the expected and observed values
-          expected <- Fortran.sswap n u incx v incy
+          expected <- ref n u incx v incy
           let observed = func n u incx v incy
           runTest expected observed
-
 
 -- | Evidence that the native a rotg function is byte equivalent to the BLAS
 -- implementation.  Parameter values that are in the range of approximately
@@ -372,32 +381,38 @@ testRanges x = testGroup "Ranges cover all values" [
 -- | Evidence that the native sdot function is byte equivalent to the CBLAS
 -- implementation.  Vectors of length 1-10 are tested having elements that are
 -- in the range of approximately (epsilon/2,2/epsilon)
-sscalTest :: String
-         -> (Int -> Float -> V.Vector Float -> Int -> V.Vector Float)
-         -> Gen Int
-         -> TestTree
-sscalTest testname func genInc = testProperty testname $
+scalTest :: (V.Storable a, Eq a, Show a)
+    => String
+    -> (Int -> a -> V.Vector a -> Int -> V.Vector a)
+    -> (Int -> a -> V.Vector a -> Int -> IO (V.Vector a))
+    -> Gen a
+    -> Gen Int
+    -> TestTree
+scalTest testname func ref gen genInc = testProperty testname $
     -- Choose the length of the vector
     forAll (choose (1,100)) $ \ n ->
-    forAll genNiceFloat $ \ a ->
+    forAll gen $ \ a ->
     -- Randomly generate a vector of the chosen length
     forAll genInc $ \ incx ->
-    forAll (genNVector genNiceFloat (1+(n-1)*incx )) $ \ u ->
+    forAll (genNVector gen (1+(n-1)*incx )) $ \ u ->
        -- monadically marshal the vectors into arrays for use with CBLAS
        ioProperty $ do
            -- compute the expected and observed values
-           expected <- Fortran.sscal n a u incx
+           expected     <- ref n a u incx
            let observed = func n a u incx
            runTest expected observed
 
 -- | Evidence that the native scopy function is byte equivalent to the CBLAS
 -- implementation.  Vectors of length 1-10 are tested having elements that are
 -- in the range of approximately (epsilon/2,2/epsilon)
-scopyTest :: String
-         -> (Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> V.Vector Float)
-         -> Gen Int
-         -> TestTree
-scopyTest testname func genInc = testProperty testname $
+copyTest :: (V.Storable a, Show a, Eq a)
+    => String
+    -> (Int -> V.Vector a -> Int -> V.Vector a -> Int -> V.Vector a)
+    -> (Int -> V.Vector a -> Int -> V.Vector a -> Int -> IO (V.Vector a))
+    -> Gen a
+    -> Gen Int
+    -> TestTree
+copyTest testname func ref gen genInc = testProperty testname $
     -- Choose the length of the vector
     forAll (choose (1,5)) $ \ n ->
     forAll (choose (1,2)) $ \ mx ->
@@ -405,34 +420,37 @@ scopyTest testname func genInc = testProperty testname $
     -- Randomly generate a vector of the chosen length
     forAll genInc $ \ incx ->
     forAll genInc $ \ incy ->
-    forAll (genNVector genNiceFloat (mx+1+(n-1)*abs incx )) $ \ u ->
-    forAll (genNVector genNiceFloat (my+1+(n-1)*abs incy )) $ \ v ->
+    forAll (genNVector gen (mx+1+(n-1)*abs incx )) $ \ u ->
+    forAll (genNVector gen (my+1+(n-1)*abs incy )) $ \ v ->
        -- monadically marshal the vectors into arrays for use with CBLAS
        ioProperty $ do
            -- compute the expected and observed values
-           expected <- Fortran.scopy n u incx v incy
+           expected <- ref n u incx v incy
            let observed = func n u incx v incy
            runTest expected observed
 
 -- | Evidence that the native saxpy function is byte equivalent to the CBLAS
 -- implementation.  Vectors of length 1-10 are tested having elements that are
 -- in the range of approximately (epsilon/2,2/epsilon)
-saxpyTest :: String
-         -> (Int -> Float -> V.Vector Float -> Int -> V.Vector Float -> Int -> V.Vector Float)
-         -> Gen Int
-         -> TestTree
-saxpyTest testname func genInc = testProperty testname $
+axpyTest :: (V.Storable a, Eq a, Show a)
+    => String
+    -> (Int -> a -> V.Vector a -> Int -> V.Vector a -> Int -> V.Vector a)
+    -> (Int -> a -> V.Vector a -> Int -> V.Vector a -> Int -> IO (V.Vector a))
+    -> Gen a
+    -> Gen Int
+    -> TestTree
+axpyTest testname func ref gen genInc = testProperty testname $
     -- Choose the length of the vector
     forAll (choose (1,100)) $ \ n ->
-    forAll genNiceFloat $ \ a ->
+    forAll gen $ \ a ->
     -- Randomly generate a vector of the chosen length
     forAll (genInc `suchThat` (/=0))$ \ incx ->
     forAll (genInc `suchThat` (/=0)) $ \ incy ->
     forAll (choose (1,100)) $ \ mx ->
     forAll (choose (1,100)) $ \ my ->
-    forAll (genNVector genNiceFloat (mx+(n-1)*abs incx )) $ \ u ->
-    forAll (genNVector genNiceFloat (my+(n-1)*abs incy )) $ \ v ->
+    forAll (genNVector gen (mx+(n-1)*abs incx )) $ \ u ->
+    forAll (genNVector gen (my+(n-1)*abs incy )) $ \ v ->
        ioProperty $ do
-           expected <- Fortran.saxpy n a u incx v incy
+           expected <- ref n a u incx v incy
            let observed = func n a u incx v incy
            runTest expected observed

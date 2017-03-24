@@ -43,19 +43,19 @@ module Numerical.BLAS.Single(
    asum,sasum,dasum,
    nrm2,snrm2,dnrm2,
    -- * Products
-   sdot,
+   dot,sdot,ddot,
    sdsdot,
-   sscal,
+   scal,sscal,dscal,
    -- * Rotations
    srot,
    rotg,srotg,drotg,
    srotm,
    srotmg,
    -- * Linear Combinations
-   saxpy,
+   axpy,saxpy,daxpy,
    -- * Memory Operations
-   scopy,
-   sswap,
+   copy,scopy,dcopy,
+   swap,sswap,dswap,
    -- * Specialized Folds
    iamax,isamax,idamax,
    ) where
@@ -70,14 +70,21 @@ import qualified Data.Vector.Storable as V
 -- | O(n) - compute the sum of products of elements drawn from two Float vectors.
 -- This function is morally equivalent to the dot product of vectors x and y
 -- when n is the length of both x and y, and both incx and incy are unity.
-sdot :: Int            -- ^ The number of elements n
-     -> Vector Float -- ^ The first vector, x
-     -> Int            -- ^ The increment, incx, between elements drawn from x
-     -> Vector Float -- ^ The second vector, y
-     -> Int            -- ^ The increment, incy,  between elements drawn from y
-     -> Float          -- ^ The sum of products of the selected elements
-sdot !n sx !incx sy !incy = V.foldl' (+) 0
+dot :: (V.Storable a, Num a)
+    => Int      -- ^ The number of elements n
+    -> Vector a -- ^ The first vector, x
+    -> Int      -- ^ The increment, incx, between elements drawn from x
+    -> Vector a -- ^ The second vector, y
+    -> Int      -- ^ The increment, incy,  between elements drawn from y
+    -> a        -- ^ The sum of products of the selected elements
+{-# INLINE dot #-}
+dot !n sx !incx sy !incy = V.foldl' (+) 0
     $ V.zipWith (*) (sampleElems n sx incx) $ sampleElems n sy incy
+{-# DEPRECATED sdot,ddot "Use dot instead." #-}
+sdot :: Int -> Vector Float -> Int -> Vector Float -> Int -> Float
+sdot = dot
+ddot :: Int -> Vector Double -> Int -> Vector Double -> Int -> Double
+ddot = dot
 
 -- O(1) - Compute the starting index of an iterative vector traversal
 -- given the length of the vector and the iterative step size.
@@ -91,35 +98,56 @@ firstIndex !n !inc
 -- | O(n) - Multiply selected elements in a vector, x, by a scalar, a.   This
 -- function is morally equivalent to scalar multiplication a*x when n is the
 -- length x and incx is unity.
-sscal :: Int          -- ^ The number of elements to scale, n
-    -> Float          -- ^ The scalar factor, a
-    -> Vector Float -- ^ The vector to scale, x
-    -> Int            -- ^ The increment between elements to scale, incx
-    -> Vector Float -- ^ The vector with scaled elements
-sscal n a sx incx =
+scal :: (V.Storable a, Num a)
+    => Int      -- ^ The number of elements to scale, n
+    -> a        -- ^ The scalar factor, a
+    -> Vector a -- ^ The vector to scale, x
+    -> Int      -- ^ The increment between elements to scale, incx
+    -> Vector a -- ^ The vector with scaled elements
+{-# INLINE scal #-}
+scal n a sx incx =
     V.unsafeUpdate_ sx (sampleIndices n incx )
     $ V.map (*a)
     $ sampleElems n sx incx
+{-# DEPRECATED sscal,dscal "Use scal instead." #-}
+sscal :: Int -> Float -> Vector Float -> Int -> Vector Float
+sscal = scal
+dscal :: Int -> Double -> Vector Double -> Int -> Vector Double
+dscal = scal
 
 -- | O(n) - Copy n elements from one Float vector into another.
-scopy :: Int          -- ^ The number of elements to copy
-    -> Vector Float -- ^ The source vector from which to copy elements
-    -> Int            -- ^ The increment between elements drawn from the source vector
-    -> Vector Float -- ^ The target vector into which elements are copied
-    -> Int            -- ^ The increment between the destination elements
-    -> Vector Float
-scopy n sx incx sy incy = updateElems (\ _ x -> x ) n sy incy sx incx
+copy :: (V.Storable a)
+    => Int      -- ^ The number of elements to copy
+    -> Vector a -- ^ The source vector from which to copy elements
+    -> Int      -- ^ The increment between elements drawn from the source vector
+    -> Vector a -- ^ The target vector into which elements are copied
+    -> Int      -- ^ The increment between the destination elements
+    -> Vector a
+{-# INLINE copy #-}
+copy n sx incx sy incy = updateElems (\ _ x -> x ) n sy incy sx incx
+{-# DEPRECATED scopy,dcopy "Use copy instead" #-}
+scopy :: Int -> Vector Float -> Int -> Vector Float -> Int -> Vector Float
+scopy = copy
+dcopy :: Int -> Vector Double -> Int -> Vector Double -> Int -> Vector Double
+dcopy = copy
 
 -- |  O(n) -- Swap n elements between two Float vectors.
-sswap :: Int          -- ^ The number of elements to copy
-    -> Vector Float -- ^ The first vector from which elements will be swapped
-    -> Int            -- ^ The increment between elements drawn from the first vector
-    -> Vector Float -- ^ The second vector from which elements will be swapped
-    -> Int            -- ^ The increment between elements drawn from the second vector
-    -> (Vector Float, Vector Float)
-sswap n sx incx sy incy =
+swap :: (V.Storable a)
+    => Int      -- ^ The number of elements to copy
+    -> Vector a -- ^ The first vector from which elements will be swapped
+    -> Int      -- ^ The increment between elements drawn from the first vector
+    -> Vector a -- ^ The second vector from which elements will be swapped
+    -> Int      -- ^ The increment between elements drawn from the second vector
+    -> (Vector a, Vector a)
+{-# INLINE swap #-}
+swap n sx incx sy incy =
     ( updateElems (\ _ y -> y ) n sx incx sy incy
     , updateElems (\ _ x -> x ) n sy incy sx incx )
+{-# DEPRECATED sswap,dswap "Use swap instead." #-}
+sswap :: Int -> Vector Float -> Int -> Vector Float -> Int -> (Vector Float, Vector Float)
+sswap = swap
+dswap :: Int -> Vector Double -> Int -> Vector Double -> Int -> (Vector Double, Vector Double)
+dswap = swap
 
 -- | O(n) - asum computes the sum of the absolute value of elements drawn a
 -- vector, x. This function is morally equivalent to the L1 norm
@@ -243,7 +271,7 @@ rotg sa sb = ( r, secant(theta), cos(theta), sin(theta))
 where r is the signed magnitude of the vector <sa,sb>.   In the case when r
 is zero, rotg returns (0,0,1,0).   See also "rot".
 -}
-rotg :: (Fractional a, Floating a, Ord a) 
+rotg :: (Fractional a, Floating a, Ord a)
    => a    -- ^ The x coordinate of the deconstructed vector
    -> a    -- ^ The y coordinate of the deconstructed vector
    -> GivensRot a -- ^ The Givens rotation coefficients
@@ -389,14 +417,21 @@ srot n u incx v incy c s =
 according.  This is morally equivalent to the linear combination of the two
 vectors when n is the length of the vectors and both incx and incy are unity.
 -}
-saxpy :: Int        -- ^ The number of elements
-    -> Float        -- ^ The scalar multiple for the first vector, a
-    -> Vector Float -- ^ The first vector, x
-    -> Int          -- ^ The interval between elements drawn from the first vector, incx
-    -> Vector Float -- ^ The second vector, y
-    -> Int          -- ^ The interval between elements drawn from the second vector, incy
-    -> Vector Float -- ^ The linear combination a*x + y
-saxpy n a sx incx sy incy = updateElems (\ y x -> y + a*x ) n sy incy sx incx
+axpy :: (V.Storable a, Num a)
+    => Int      -- ^ The number of elements
+    -> a        -- ^ The scalar multiple for the first vector, a
+    -> Vector a -- ^ The first vector, x
+    -> Int      -- ^ The interval between elements drawn from the first vector, incx
+    -> Vector a -- ^ The second vector, y
+    -> Int      -- ^ The interval between elements drawn from the second vector, incy
+    -> Vector a -- ^ The linear combination a*x + y
+{-# INLINE axpy #-}
+axpy n a sx incx sy incy = updateElems (\ y x -> y + a*x ) n sy incy sx incx
+{-# DEPRECATED saxpy,daxpy "Use axpy instead." #-}
+saxpy :: Int -> Float -> Vector Float -> Int -> Vector Float -> Int -> Vector Float
+saxpy = axpy
+daxpy :: Int -> Double -> Vector Double -> Int -> Vector Double -> Int -> Vector Double
+daxpy = axpy
 
 {- | O(n) apply a modified Givens rotation to elements drawn from a pair of
 vectors according to the following specification:
