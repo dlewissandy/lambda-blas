@@ -223,11 +223,11 @@ axpyHelper f !n !a sx !incx sy !incy =
 -- please see <http://www.netlib.org/lapack/explore-html/df/d28/group__single__blas__level1_ga2f65d66137ddaeb7ae93fcc4902de3fc.html#ga2f65d66137ddaeb7ae93fcc4902de3fc>
 srotmg,srotmg_unsafe :: Float -> Float -> Float -> Float -> IO (ModGivensRot Float)
 srotmg sd1 sd2 sx1 sy1 = rotmgHelper srotmg_foreign sd1 sd2 sx1 sy1
-srotmg_unsafe sd1 sd2 sx1 sy1 = rotmHelper srotmg_unsafe_ sd1 sd2 sx1 sy1
-drotmg,drotmg_unsafe :: Float -> Float -> Float -> Float -> IO (ModGivensRot Float)
+srotmg_unsafe sd1 sd2 sx1 sy1 = rotmgHelper srotmg_unsafe_ sd1 sd2 sx1 sy1
+drotmg,drotmg_unsafe :: Double -> Double -> Double -> Double -> IO (ModGivensRot Double)
 drotmg sd1 sd2 sx1 sy1 = rotmgHelper drotmg_foreign sd1 sd2 sx1 sy1
-drotmg_unsafe sd1 sd2 sx1 sy1 = rotmHelper drotmg_unsafe_ sd1 sd2 sx1 sy1
-rotmgHelper :: (V.Storable a) =>
+drotmg_unsafe sd1 sd2 sx1 sy1 = rotmgHelper drotmg_unsafe_ sd1 sd2 sx1 sy1
+rotmgHelper :: (V.Storable a, Eq a, Num a) =>
    (Ptr a -> Ptr a -> Ptr a -> Ptr a -> Ptr a -> IO ())
    -> a -> a -> a -> a -> IO (ModGivensRot a)
 {-# INLINE rotmgHelper #-}
@@ -247,10 +247,10 @@ rotmgHelper f sd1 sd2 sx1 sy1 =
         x1<-peek psx1
         [flag,h11,h21,h12,h22] <- peekArray 5 pparms
         return $ case flag of
-            -2.0 -> FLAGNEG2
-            -1.0 -> FLAGNEG1 {..}
-            0.0  -> FLAG0 {..}
-            1.0  -> FLAG1 {..}
+            -2 -> FLAGNEG2
+            -1 -> FLAGNEG1 {..}
+            0  -> FLAG0 {..}
+            1  -> FLAG1 {..}
             _    -> error "unexpected parameter value returned from srotmg"
 
 -- Apply a modified Givens rotation.
@@ -261,7 +261,7 @@ srotm_unsafe = rotmHelper srotm_unsafe_
 drotm,drotm_unsafe :: ModGivensRot Double -> Int -> V.Vector Double -> Int -> V.Vector Double -> Int -> IO (V.Vector Double, V.Vector Double)
 drotm        = rotmHelper drotm_foreign
 drotm_unsafe = rotmHelper drotm_unsafe_
-rotmHelper :: (V.Storable a)
+rotmHelper :: (V.Storable a, Num a)
     => (Ptr Int -> Ptr a -> Ptr Int -> Ptr a -> Ptr Int -> Ptr a -> IO ())
     -> ModGivensRot a -> Int -> V.Vector a -> Int -> V.Vector a -> Int -> IO (V.Vector a, V.Vector a)
 {-# INLINE rotmHelper #-}
@@ -274,10 +274,10 @@ rotmHelper f flags n sx incx sy incy =
         poke pincx incx
         poke pincy incy
         case flags of
-            FLAGNEG2 -> pokeArray pparms [-2.0,1.0,0.0,0.0,1.0]
-            FLAGNEG1{..} -> pokeArray pparms [-1.0,h11,h21,h12,h22]
-            FLAG0{..} -> pokeArray pparms [0.0,0.0,h21,h12,0.0]
-            FLAG1{..} -> pokeArray pparms [1.0,h11,0.0,0.0,h22]
+            FLAGNEG2 -> pokeArray pparms [-2,1,0,0,1]
+            FLAGNEG1{..} -> pokeArray pparms [-1,h11,h21,h12,h22]
+            FLAG0{..} -> pokeArray pparms [0,0,h21,h12,0]
+            FLAG1{..} -> pokeArray pparms [1,h11,0,0,h22]
         V.MVector zx fptrx <- V.thaw sx
         V.MVector zy fptry <- V.thaw sy
         f pn (getPtr fptrx) pincx (getPtr fptry) pincy pparms
