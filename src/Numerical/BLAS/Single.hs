@@ -47,10 +47,10 @@ module Numerical.BLAS.Single(
    sdsdot,
    scal,sscal,dscal,
    -- * Rotations
-   srot,
+   rot,srot,drot,
    rotg,srotg,drotg,
-   srotm,
-   srotmg,
+   rotm,srotm,drotm,
+   rotmg,srotmg,drotmg,
    -- * Linear Combinations
    axpy,saxpy,daxpy,
    -- * Memory Operations
@@ -315,12 +315,13 @@ and +/- 4096^2.
 
 See also "rotm".
 -}
-srotmg :: Float -- ^ The first diagonal element sd1
-    -> Float    -- ^ The second diagonal element sd2
-    -> Float    -- ^ The first component of the vector sx1
-    -> Float    -- ^ The second component of the vector sx2
-    -> ModGivensRot Float -- ^ The modified Givens Rotation coefficients
-srotmg sd1 sd2 sx1 sy1
+rotmg :: (Ord a, Fractional a)
+    => a -- ^ The first diagonal element sd1
+    -> a -- ^ The second diagonal element sd2
+    -> a -- ^ The first component of the vector sx1
+    -> a -- ^ The second component of the vector sx2
+    -> ModGivensRot a -- ^ The modified Givens Rotation coefficients
+rotmg sd1 sd2 sx1 sy1
    | sd1 < 0   = FLAGNEG1 { d1=0, d2=0, x1=0, h11=0, h12=0, h21=0, h22=0}
    | sp2 == 0  = FLAGNEG2
    | asq1>asq2 =
@@ -344,21 +345,25 @@ srotmg sd1 sd2 sx1 sy1
    asq1 = abs sq1
    asq2 = abs sq2
    {-# INLINE mkparms #-}
-   mkparms :: (Int, Float, Float, Float, Float, Float, Float, Float) -> ModGivensRot Float
    mkparms (flag,d1,d2,x1,h11,h12,h21,h22) =
       case compare flag 0 of
           LT -> FLAGNEG1 { .. }
           EQ -> FLAG0 { .. }
           GT -> FLAG1 { .. }
+{-# DEPRECATED srotmg, drotmg "Use rotmg instead." #-}
+srotmg :: Float -> Float -> Float -> Float -> ModGivensRot Float
+srotmg = rotmg
+drotmg :: Double -> Double -> Double -> Double -> ModGivensRot Double
+drotmg = rotmg
 
 -- | A helper function that ensures that the scale of sd1 and sd2 fall between
 -- 1.677E7 and 1/1.677E7.   This is called by srotmg to scale the modified
 -- Givens rotation matrix to avoid underflow.
 {-# INLINE checkscale #-}
-checkscale :: (Int,Float,Float,Float,Float,Float,Float,Float) -> (Int,Float,Float,Float,Float,Float,Float,Float)
+checkscale :: ( Ord a, Fractional a)
+   => (Int,a,a,a,a,a,a,a) -> (Int,a,a,a,a,a,a,a)
 checkscale = checkscale2 . checkscale1
    where
-   gam, gamsq, rgamsq :: Float
    gam = 4096
    gamsq = 1.67772E7
    rgamsq = 5.96046E-8
@@ -396,22 +401,27 @@ checkscale = checkscale2 . checkscale1
        | otherwise = ( -1, sd1, sd2, sx1, sh11, 1, -1, sh22 )
 
 
--- | O(n) apply a Givens rotation to elements drawn from a pair of vectors.
+-- | O(n) apply a plane rotation to elements drawn from a pair of vectors.
 -- This is morally equivalent to rotating both vectors through an angle when
 -- n is equal to the length of both the vectors, and both incx and incy are
 -- unity.
-srot :: Int          -- ^ The number of elements to rotate
-    -> Vector Float  -- ^ The first vector to rotate, x
-    -> Int           -- ^ The interval between rotated elements in the first vector, incx
-    -> Vector Float  -- ^ The second vector to rotate, y
-    -> Int           -- ^ The interval between rotated elements in the second vector, incy
-    -> Float         -- ^ The cosine of the angle of rotation
-    -> Float         -- ^ The sine of the angle of rotation
-    -> (Vector Float, Vector Float) -- the rotated vectors
-srot n u incx v incy c s =
+rot :: (V.Storable a, Num a)
+    => Int       -- ^ The number of elements to rotate
+    -> Vector a  -- ^ The first vector to rotate, x
+    -> Int       -- ^ The interval between rotated elements in the first vector, incx
+    -> Vector a  -- ^ The second vector to rotate, y
+    -> Int       -- ^ The interval between rotated elements in the second vector, incy
+    -> a         -- ^ The cosine of the angle of rotation
+    -> a         -- ^ The sine of the angle of rotation
+    -> (Vector a, Vector a) -- the rotated vectors
+rot n u incx v incy c s =
     ( updateElems (\ x y -> c*x + s*y) n u incx v incy
     , updateElems (\ y x -> c*y - s*x) n v incy u incx )
-
+{-# DEPRECATED srot,drot "Use rot instead." #-}
+srot :: Int -> Vector Float -> Int -> Vector Float -> Int -> Float -> Float -> (Vector Float, Vector Float)
+srot = rot
+drot :: Int -> Vector Double -> Int -> Vector Double -> Int -> Double -> Double -> (Vector Double, Vector Double)
+drot = rot
 
 {- | O(n) compute the linear combination of elements drawn from two vectors
 according.  This is morally equivalent to the linear combination of the two
@@ -450,15 +460,16 @@ srotm (FLAG1 h11 h22) n sx incx sy incy =
 @
 see also "rotmg".
 -}
-srotm :: ModGivensRot Float
+rotm :: (V.Storable a, Num a)
+    => ModGivensRot a
     -> Int
-    -> Vector Float
+    -> Vector a
     -> Int
-    -> Vector Float
+    -> Vector a
     -> Int
-    -> ( Vector Float, Vector Float )
-{-# INLINE srotm #-}
-srotm flag !n sx !incx sy !incy = case flag of
+    -> ( Vector a, Vector a )
+{-# INLINE rotm #-}
+rotm flag !n sx !incx sy !incy = case flag of
     FLAGNEG2 -> (sx,sy)
     FLAGNEG1 _ _ _ sh11 sh12 sh21 sh22 ->
         ( updateElems (\ x y -> sh11*x + sh12*y) n sx incx sy incy
@@ -469,3 +480,8 @@ srotm flag !n sx !incx sy !incy = case flag of
     FLAG1 _ _ _ sh11 sh22 ->
         ( updateElems (\ x y -> sh11*x + y) n sx incx sy incy
         , updateElems (\ y x -> -x + sh22*y) n sy incy sx incx)
+{-# DEPRECATED srotm,drotm "Use rotm instead" #-}
+srotm :: ModGivensRot Float -> Int -> Vector Float -> Int -> Vector Float -> Int -> ( Vector Float, Vector Float )
+srotm = rotm
+drotm :: ModGivensRot Double -> Int -> Vector Double -> Int -> Vector Double -> Int -> ( Vector Double, Vector Double )
+drotm = rotm

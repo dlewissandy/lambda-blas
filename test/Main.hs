@@ -30,8 +30,10 @@ tests = testGroup "BLAS"
         , sdsdotTest "sdsdot" sdsdot (elements [-5..5])
         , rotgTest "srotg" genNiceFloat Fortran.srotg rotg
         , rotgTest "drotg" genNiceDouble Fortran.drotg rotg
-        , srotmgTest "srotmg" srotmg
-        , srotmTest "srotm" srotm (elements [-5..5] `suchThat` (/=0))
+        , rotmgTest "srotmg" rotmg Fortran.srotmg genNiceFloat
+        , rotmgTest "drotmg" rotmg Fortran.drotmg genNiceDouble
+        , rotmTest "srotm" rotmg rotm Fortran.srotm genNiceFloat (elements [-5..5] `suchThat` (/=0))
+        , rotmTest "drotm" rotmg rotm Fortran.drotm genNiceDouble (elements [-5..5] `suchThat` (/=0))
         , iviTest "sasum" asum (Fortran.sasum) genNiceFloat (elements [1..5])
         , iviTest "dasum" asum (Fortran.dasum) genNiceDouble (elements [1..5])
         , iviTest "snrm2" nrm2 (Fortran.snrm2) genNiceFloat (elements [1..5])
@@ -44,7 +46,8 @@ tests = testGroup "BLAS"
         , copyTest "dcopy" copy Fortran.dcopy genNiceDouble (elements [-5..5])
         , swapTest "sswap" swap Fortran.sswap genNiceFloat  (elements [-5..5])
         , swapTest "dswap" swap Fortran.dswap genNiceDouble (elements [-5..5])
-        , srotTest "srot" srot (elements [-5,5])
+        , rotTest  "srot"  rot Fortran.srot genNiceFloat (elements [-5,5])
+        , rotTest  "drot"  rot Fortran.drot genNiceDouble (elements [-5,5])
         , axpyTest "saxpy" axpy Fortran.saxpy genNiceFloat  (elements [-5,5])
         , axpyTest "daxpy" axpy Fortran.daxpy genNiceDouble (elements [-5,5])
         ]
@@ -147,60 +150,78 @@ rotgTest testname gen ref func = testProperty testname $
 -- | Evidence that the native srotg function is byte equivalent to the BLAS
 -- implementation.  Parameter values that are in the range of approximately
 -- +/-(epsilon/2,2/epsilon) are tested.
-srotTest :: String -> ( Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> Float -> Float -> (V.Vector Float, V.Vector Float)) -> Gen Int -> TestTree
-srotTest testname func genInc = testProperty testname $
+rotTest :: (V.Storable a, Floating a, Show a, Eq a)
+    => String
+    -> ( Int -> V.Vector a -> Int -> V.Vector a -> Int -> a -> a -> (V.Vector a, V.Vector a))
+    -> ( Int -> V.Vector a -> Int -> V.Vector a -> Int -> a -> a -> IO (V.Vector a, V.Vector a))
+    -> Gen a
+    -> Gen Int
+    -> TestTree
+rotTest testname func ref gen genInc = testProperty testname $
     -- Choose the length of the vector
     forAll (choose (1,100)) $ \ n ->
-    forAll genNiceFloat $ \ a ->
+    forAll gen $ \ a ->
     -- Randomly generate two vectors of the chosen length
     forAll (genInc `suchThat` (/=0)) $ \ incx ->
     forAll (genInc `suchThat` (/=0)) $ \ incy ->
-    forAll (genNVector genNiceFloat (1+(n-1)*abs incx )) $ \ u ->
-    forAll (genNVector genNiceFloat (1+(n-1)*abs incy )) $ \ v ->
+    forAll (genNVector gen (1+(n-1)*abs incx )) $ \ u ->
+    forAll (genNVector gen (1+(n-1)*abs incy )) $ \ v ->
         -- monadically marshal the vectors into arrays for use with CBLAS
         ioProperty $ do
             let c = cos a
             let s = sin a
             -- compute the expected and observed values
-            expected <- Fortran.srot n u incx v incy c s
+            expected <- ref n u incx v incy c s
             let observed = func n u incx v incy c s
             runTest expected observed
 
 -- | Evidence that the native srotmg function is byte equivalent to the BLAS
 -- implementation.  Parameter values that are in the range of approximately
 -- +/-(epsilon/2,2/epsilon) are tested.
-srotmgTest :: String -> (Float -> Float -> Float -> Float -> ModGivensRot Float ) -> TestTree
-srotmgTest testname func = testProperty testname $
-   forAll genNiceFloat $ \ sd1 ->
-   forAll genNiceFloat $ \ sd2 ->
-   forAll genNiceFloat $ \ sx1 ->
-   forAll genNiceFloat $ \ sy1 ->
+rotmgTest :: (Eq a, Show a)
+    => String
+    -> (a -> a -> a -> a -> ModGivensRot a )
+    -> (a -> a -> a -> a -> IO (ModGivensRot a))
+    -> Gen a
+    -> TestTree
+rotmgTest testname func ref gen = testProperty testname $
+   forAll gen $ \ sd1 ->
+   forAll gen $ \ sd2 ->
+   forAll gen $ \ sx1 ->
+   forAll gen $ \ sy1 ->
       -- monadically marshal the vectors into arrays for use with CBLAS
       ioProperty $ do
           -- compute the expected and observed values
-          expected <- Fortran.srotmg sd1 sd2 sx1 sy1
+          expected <- ref sd1 sd2 sx1 sy1
           let observed = func sd1 sd2 sx1 sy1
           runTest expected observed
 
 -- | Evidence that the native srotmg function is byte equivalent to the BLAS
 -- implementation.  Parameter values that are in the range of approximately
 -- +/-(epsilon/2,2/epsilon) are tested.
-srotmTest :: String -> (ModGivensRot Float -> Int -> V.Vector Float -> Int -> V.Vector Float -> Int -> (V.Vector Float, V.Vector Float ) ) -> Gen Int -> TestTree
-srotmTest testname func genInc = testProperty testname $
-      forAll genNiceFloat $ \ sd1 ->
-      forAll genNiceFloat $ \ sd2 ->
-      forAll genNiceFloat $ \ sx1 ->
-      forAll genNiceFloat $ \ (srotmg sd1 sd2 sx1 -> flags ) ->
+rotmTest :: (V.Storable a, Show a, Eq a)
+    => String
+    -> ( a -> a -> a -> a -> ModGivensRot a)
+    -> (ModGivensRot a -> Int -> V.Vector a -> Int -> V.Vector a -> Int -> (V.Vector a, V.Vector a))
+    -> (ModGivensRot a -> Int -> V.Vector a -> Int -> V.Vector a -> Int -> IO (V.Vector a, V.Vector a))
+    -> Gen a
+    -> Gen Int
+    -> TestTree
+rotmTest testname mg func ref gen genInc = testProperty testname $
+      forAll gen $ \ sd1 ->
+      forAll gen $ \ sd2 ->
+      forAll gen $ \ sx1 ->
+      forAll gen $ \ (mg sd1 sd2 sx1 -> flags ) ->
       forAll (choose (1,100)) $ \ n ->
       forAll (genInc `suchThat` (/=0)) $ \ incx ->
       forAll (genInc `suchThat` (/=0)) $ \ incy ->
       forAll (choose (1,100)) $ \ mx ->
       forAll (choose (1,100)) $ \ my ->
-      forAll (genNVector genNiceFloat (mx+(n-1)*abs incx )) $ \ u ->
-      forAll (genNVector genNiceFloat (my+(n-1)*abs incy )) $ \ v ->
+      forAll (genNVector gen (mx+(n-1)*abs incx )) $ \ u ->
+      forAll (genNVector gen (my+(n-1)*abs incy )) $ \ v ->
          ioProperty $ do
              let observed = func flags n u incx v incy
-             expected <- Fortran.srotm flags n u incx v incy
+             expected <- ref flags n u incx v incy
              runTest expected observed
 
 
